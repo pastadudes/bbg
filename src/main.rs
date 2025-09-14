@@ -122,7 +122,7 @@ async fn main() {
 
     let framework = poise::Framework::builder()
         .options(poise::FrameworkOptions {
-            commands: vec![swear_leaderboard, pi, avatar, age],
+            commands: vec![swear_leaderboard(), pi(), avatar(), age()],
             prefix_options: poise::PrefixFrameworkOptions {
                 prefix: Some("-".into()),
                 ..Default::default()
