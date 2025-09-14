@@ -105,7 +105,7 @@ async fn age(
     let timestamp = datetime.timestamp();
 
     let response = format!(
-        "{}'s account was created at {}\nUnix Timestamp: <t:{}>",
+        "{}'s account was created at {} (<t:{}:R>)",
         u.name, datetime, timestamp
     );
 
