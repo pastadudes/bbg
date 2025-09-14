@@ -1,4 +1,5 @@
 use censor::Censor;
+use chrono::{DateTime, Utc};
 use poise::serenity_prelude as serenity;
 use rand::prelude::*;
 use std::collections::HashMap;
@@ -40,7 +41,7 @@ async fn swear_leaderboard(ctx: Context<'_>) -> Result<(), Error> {
 }
 
 #[poise::command(slash_command, prefix_command)]
-async fn pi(ctx: Context<'_>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+async fn pi(ctx: Context<'_>) -> Result<(), Error> {
     let mut pi_string = format!("{:.15}", PI); // get Pi to 15 decimal places
 
     // VERY SMALL CHANCE to mess up a digit
@@ -61,6 +62,58 @@ async fn pi(ctx: Context<'_>) -> Result<(), Box<dyn std::error::Error + Send + S
     Ok(())
 }
 
+#[poise::command(slash_command, prefix_command)]
+async fn avatar(
+    ctx: Context<'_>,
+    #[description = "User mention"] user: Option<serenity::User>,
+    #[description = "User ID"] user_id: Option<serenity::UserId>,
+) -> Result<(), Error> {
+    // Decide whose avatar to show
+    let user: serenity::User = if let Some(user) = user {
+        user
+    } else if let Some(uid) = user_id {
+        ctx.serenity_context().http.get_user(uid).await?
+    } else {
+        ctx.author().clone()
+    };
+
+    let avatar_url = user
+        .avatar_url()
+        .unwrap_or_else(|| user.default_avatar_url());
+
+    // Build the embed
+    let embed = serenity::CreateEmbed::new()
+        .title(format!("{}'s Avatar", user.name))
+        .image(avatar_url);
+
+    // Send it
+    ctx.send(poise::CreateReply::default().embed(embed)).await?;
+
+    Ok(())
+}
+
+#[poise::command(slash_command, prefix_command)]
+async fn age(
+    ctx: Context<'_>,
+    #[description = "Selected user"] user: Option<serenity::User>,
+) -> Result<(), Error> {
+    let u = user.as_ref().unwrap_or_else(|| ctx.author());
+
+    // Convert Timestamp -> chrono::DateTime<Utc>
+    let datetime: DateTime<Utc> = u.created_at().to_utc();
+
+    let timestamp = datetime.timestamp();
+
+    let response = format!(
+        "{}'s account was created at {}\nUnix Timestamp: <t:{}>",
+        u.name, datetime, timestamp
+    );
+
+    ctx.say(response).await?;
+
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() {
     let token = std::env::var("DISCORD_TOKEN").expect("missing DISCORD_TOKEN");
@@ -69,8 +122,7 @@ async fn main() {
 
     let framework = poise::Framework::builder()
         .options(poise::FrameworkOptions {
-            commands: vec![swear_leaderboard(), pi()],
-
+            commands: vec![swear_leaderboard(), pi(), avatar(), age()],
             prefix_options: poise::PrefixFrameworkOptions {
                 prefix: Some("-".into()),
                 ..Default::default()
