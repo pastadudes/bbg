@@ -128,8 +128,9 @@ async fn main() {
                 ..Default::default()
             },
             #[allow(unused_variables)]
-            event_handler: |ctx, event, _framework, data| {
+            event_handler: |ctx, event, framework, data| {
                 Box::pin(async move {
+                    poise::builtins::register_globally(ctx, &framework.options().commands).await?;
                     if let serenity::FullEvent::Message { new_message } = event {
                         if new_message.author.bot {
                             return Ok(());
