@@ -1,35 +1,108 @@
 use censor::Censor;
 use chrono::{DateTime, Utc};
+use poise::samples::HelpConfiguration;
 use poise::serenity_prelude as serenity;
 use rand::prelude::*;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::f64::consts::PI;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+struct SwearKey {
+    guild_id: u64,
+    user_id: u64,
+}
+
+impl From<(serenity::GuildId, serenity::UserId)> for SwearKey {
+    fn from((g, u): (serenity::GuildId, serenity::UserId)) -> Self {
+        Self {
+            guild_id: g.get(),
+            user_id: u.get(),
+        }
+    }
+}
+
+impl From<&SwearKey> for (serenity::GuildId, serenity::UserId) {
+    fn from(k: &SwearKey) -> Self {
+        (
+            serenity::GuildId::new(k.guild_id),
+            serenity::UserId::new(k.user_id),
+        )
+    }
+}
+
 struct Data {
-    swears: Arc<Mutex<HashMap<serenity::UserId, usize>>>,
+    swears: Arc<Mutex<HashMap<SwearKey, usize>>>,
+}
+
+impl Data {
+    /// Save by cloning the map and writing that snapshot to disk.
+    async fn save(&self, path: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        // take short lock and clone
+        let snapshot = {
+            let guard = self.swears.lock().await;
+            guard.clone()
+        };
+
+        // ensure parent exists
+        if let Some(parent) = std::path::Path::new(path).parent() {
+            if !parent.as_os_str().is_empty() {
+                tokio::fs::create_dir_all(parent).await?;
+            }
+        }
+
+        // write to tmp then rename for atomicity
+        let tmp = format!("{}.tmp", path);
+        let json = serde_json::to_string_pretty(&snapshot)?;
+        tokio::fs::write(&tmp, json.as_bytes()).await?;
+        tokio::fs::rename(&tmp, path).await?;
+        Ok(())
+    }
+
+    async fn load(
+        path: &str,
+    ) -> Result<HashMap<SwearKey, usize>, Box<dyn std::error::Error + Send + Sync>> {
+        match tokio::fs::read_to_string(path).await {
+            Ok(content) => Ok(serde_json::from_str(&content)?),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(HashMap::new()),
+            Err(e) => {
+                eprintln!("failed to read {}: {:?}", path, e);
+                Err(Box::new(e))
+            }
+        }
+    }
 }
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
 type Context<'a> = poise::Context<'a, Data, Error>;
 
 #[poise::command(slash_command, prefix_command)]
-async fn swear_leaderboard(ctx: Context<'_>) -> Result<(), Error> {
+async fn swears(ctx: Context<'_>) -> Result<(), Error> {
     let entries: Vec<(serenity::UserId, usize)> = {
         let data = ctx.data().swears.lock().await;
-        let mut vec: Vec<_> = data.iter().map(|(k, v)| (*k, *v)).collect();
+        let guild_id = ctx.guild_id().unwrap();
+
+        let mut vec: Vec<_> = data
+            .iter()
+            .filter_map(|(k, v)| {
+                let (g, u): (serenity::GuildId, serenity::UserId) = k.into();
+                if g == guild_id { Some((u, *v)) } else { None }
+            })
+            .collect();
+
         vec.sort_by_key(|&(_, count)| std::cmp::Reverse(count));
         vec
     };
 
     if entries.is_empty() {
-        ctx.say("no one sweared cuz everyone here is a fucking baby")
+        ctx.say("no one sweared cuz everyone here is a baby")
             .await?;
         return Ok(());
     }
 
-    let mut response = String::from("inmature mfs\n");
+    let mut response = String::from("inmature people\n");
     for (i, (user_id, count)) in entries.into_iter().take(10).enumerate() {
         if let Ok(user) = user_id.to_user(ctx.serenity_context()).await {
             response.push_str(&format!("{}. {} — {} swears\n", i + 1, user.name, count));
@@ -68,7 +141,7 @@ async fn avatar(
     #[description = "User mention"] user: Option<serenity::User>,
     #[description = "User ID"] user_id: Option<serenity::UserId>,
 ) -> Result<(), Error> {
-    // Decide whose avatar to show
+    // decide whose avatar to show
     let user: serenity::User = if let Some(user) = user {
         user
     } else if let Some(uid) = user_id {
@@ -81,12 +154,12 @@ async fn avatar(
         .avatar_url()
         .unwrap_or_else(|| user.default_avatar_url());
 
-    // Build the embed
+    // build the embed
     let embed = serenity::CreateEmbed::new()
-        .title(format!("{}'s Avatar", user.name))
+        .title(format!("{}'s avatar", user.name))
         .image(avatar_url);
 
-    // Send it
+    // send it
     ctx.send(poise::CreateReply::default().embed(embed)).await?;
 
     Ok(())
@@ -99,18 +172,40 @@ async fn age(
 ) -> Result<(), Error> {
     let u = user.as_ref().unwrap_or_else(|| ctx.author());
 
-    // Convert Timestamp -> chrono::DateTime<Utc>
+    // convert Timestamp -> chrono::DateTime<Utc>
     let datetime: DateTime<Utc> = u.created_at().to_utc();
 
     let timestamp = datetime.timestamp();
 
     let response = format!(
-        "{}'s account was created at {}\nUnix Timestamp: <t:{}>",
+        "{}'s account was created at {} (<t:{}:R>)",
         u.name, datetime, timestamp
     );
 
     ctx.say(response).await?;
 
+    Ok(())
+}
+
+#[poise::command(slash_command, prefix_command)]
+async fn register(ctx: Context<'_>) -> Result<(), Error> {
+    poise::builtins::register_application_commands_buttons(ctx).await?;
+    Ok(())
+}
+
+#[poise::command(slash_command, track_edits, prefix_command)]
+async fn help(ctx: Context<'_>, command: Option<String>) -> Result<(), Error> {
+    let config = HelpConfiguration {
+        ephemeral: true,
+        include_description: true,
+        show_context_menu_commands: true,
+        show_subcommands: true,
+        __non_exhaustive: (), // Poise devs why tf do we need this??? you even hid it in docs...
+        extra_text_at_bottom: "\
+            Type -help `command` for more help on a specifc command.
+            This command also tracks edits!",
+    };
+    poise::builtins::help(ctx, command.as_deref(), config).await?;
     Ok(())
 }
 
@@ -122,7 +217,7 @@ async fn main() {
 
     let framework = poise::Framework::builder()
         .options(poise::FrameworkOptions {
-            commands: vec![swear_leaderboard(), pi(), avatar(), age()],
+            commands: vec![swears(), pi(), avatar(), age(), register(), help()],
             prefix_options: poise::PrefixFrameworkOptions {
                 prefix: Some("-".into()),
                 ..Default::default()
@@ -130,16 +225,30 @@ async fn main() {
             #[allow(unused_variables)]
             event_handler: |ctx, event, framework, data| {
                 Box::pin(async move {
-                    poise::builtins::register_globally(ctx, &framework.options().commands).await?;
                     if let serenity::FullEvent::Message { new_message } = event {
-                        if new_message.author.bot {
+                        if new_message.author.bot || new_message.content.starts_with("-") {
                             return Ok(());
                         }
 
-                        let censor = Censor::Standard;
+                        println!(
+                            "event_handler triggered for message: {}",
+                            new_message.content
+                        );
+
+                        let guild_id = match new_message.guild_id {
+                            Some(g) => g,
+                            None => return Ok(()), // skip DMs cuz why would it count in dms?
+                        };
+
+                        let censor = Censor::Standard + Censor::Sex;
                         if censor.check(&new_message.content) {
                             let mut map = data.swears.lock().await;
-                            *map.entry(new_message.author.id).or_insert(0) += 1;
+                            let key = SwearKey::from((guild_id, new_message.author.id));
+                            *map.entry(key).or_insert(0) += 1;
+
+                            if let Err(e) = data.save("swears.json").await {
+                                eprintln!("failed to save swears.json: {:?}", e);
+                            }
                         }
                     }
 
@@ -148,10 +257,16 @@ async fn main() {
             },
             ..Default::default()
         })
-        .setup(|_ctx, _ready, _framework| {
+        .setup(|ctx, _ready, framework| {
             Box::pin(async move {
+                if let Err(e) =
+                    poise::builtins::register_globally(ctx, &framework.options().commands).await
+                {
+                    eprintln!("FAILED to register global commands!!! {:?}", e);
+                }
+                let swears = Data::load("swears.json").await?;
                 Ok(Data {
-                    swears: Arc::new(Mutex::new(HashMap::new())),
+                    swears: Arc::new(Mutex::new(swears)),
                 })
             })
         })
