@@ -1,117 +1,124 @@
-use censor::Censor;
+// use censor::Censor;
 use chrono::{DateTime, Utc};
 use poise::samples::HelpConfiguration;
 use poise::serenity_prelude as serenity;
 use rand::prelude::*;
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+// use serde::{Deserialize, Serialize};
+// use std::collections::HashMap;
 use std::f64::consts::PI;
-use std::sync::Arc;
-use tokio::sync::Mutex;
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-struct SwearKey {
-    guild_id: u64,
-    user_id: u64,
-}
-
-impl From<(serenity::GuildId, serenity::UserId)> for SwearKey {
-    fn from((g, u): (serenity::GuildId, serenity::UserId)) -> Self {
-        Self {
-            guild_id: g.get(),
-            user_id: u.get(),
-        }
-    }
-}
-
-impl From<&SwearKey> for (serenity::GuildId, serenity::UserId) {
-    fn from(k: &SwearKey) -> Self {
-        (
-            serenity::GuildId::new(k.guild_id),
-            serenity::UserId::new(k.user_id),
-        )
-    }
-}
+use std::time::Instant;
+// use std::sync::Arc;
+// use tokio::sync::Mutex;
+use image::GenericImageView;
+use reqwest::blocking::get;
+use serenity::model::colour::Color;
 
 struct Data {
-    swears: Arc<Mutex<HashMap<SwearKey, usize>>>,
+    start_time: Instant,
 }
-
-impl Data {
-    /// Save by cloning the map and writing that snapshot to disk.
-    async fn save(&self, path: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        // take short lock and clone
-        let snapshot = {
-            let guard = self.swears.lock().await;
-            guard.clone()
-        };
-
-        // ensure parent exists
-        if let Some(parent) = std::path::Path::new(path).parent() {
-            if !parent.as_os_str().is_empty() {
-                tokio::fs::create_dir_all(parent).await?;
-            }
-        }
-
-        // write to tmp then rename for atomicity
-        let tmp = format!("{}.tmp", path);
-        let json = serde_json::to_string_pretty(&snapshot)?;
-        tokio::fs::write(&tmp, json.as_bytes()).await?;
-        tokio::fs::rename(&tmp, path).await?;
-        Ok(())
-    }
-
-    async fn load(
-        path: &str,
-    ) -> Result<HashMap<SwearKey, usize>, Box<dyn std::error::Error + Send + Sync>> {
-        match tokio::fs::read_to_string(path).await {
-            Ok(content) => Ok(serde_json::from_str(&content)?),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(HashMap::new()),
-            Err(e) => {
-                eprintln!("failed to read {}: {:?}", path, e);
-                Err(Box::new(e))
-            }
-        }
-    }
-}
+// #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+// struct SwearKey {
+//     guild_id: u64,
+//     user_id: u64,
+// }
+//
+// impl From<(serenity::GuildId, serenity::UserId)> for SwearKey {
+//     fn from((g, u): (serenity::GuildId, serenity::UserId)) -> Self {
+//         Self {
+//             guild_id: g.get(),
+//             user_id: u.get(),
+//         }
+//     }
+// }
+//
+// impl From<&SwearKey> for (serenity::GuildId, serenity::UserId) {
+//     fn from(k: &SwearKey) -> Self {
+//         (
+//             serenity::GuildId::new(k.guild_id),
+//             serenity::UserId::new(k.user_id),
+//         )
+//     }
+// }
+//
+// struct Data {
+//     swears: Arc<Mutex<HashMap<SwearKey, usize>>>,
+// }
+//
+// impl Data {
+//     /// Save by cloning the map and writing that snapshot to disk.
+//     async fn save(&self, path: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+//         // take short lock and clone
+//         let snapshot = {
+//             let guard = self.swears.lock().await;
+//             guard.clone()
+//         };
+//
+//         // ensure parent exists
+//         if let Some(parent) = std::path::Path::new(path).parent() {
+//             if !parent.as_os_str().is_empty() {
+//                 tokio::fs::create_dir_all(parent).await?;
+//             }
+//         }
+//
+//         // write to tmp then rename for atomicity
+//         let tmp = format!("{}.tmp", path);
+//         let json = serde_json::to_string_pretty(&snapshot)?;
+//         tokio::fs::write(&tmp, json.as_bytes()).await?;
+//         tokio::fs::rename(&tmp, path).await?;
+//         Ok(())
+//     }
+//
+//     async fn load(
+//         path: &str,
+//     ) -> Result<HashMap<SwearKey, usize>, Box<dyn std::error::Error + Send + Sync>> {
+//         match tokio::fs::read_to_string(path).await {
+//             Ok(content) => Ok(serde_json::from_str(&content)?),
+//             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(HashMap::new()),
+//             Err(e) => {
+//                 eprintln!("failed to read {}: {:?}", path, e);
+//                 Err(Box::new(e))
+//             }
+//         }
+//     }
+// }
 
 type Error = Box<dyn std::error::Error + Send + Sync>;
 type Context<'a> = poise::Context<'a, Data, Error>;
 
-#[poise::command(slash_command, prefix_command)]
-async fn swears(ctx: Context<'_>) -> Result<(), Error> {
-    let entries: Vec<(serenity::UserId, usize)> = {
-        let data = ctx.data().swears.lock().await;
-        let guild_id = ctx.guild_id().unwrap();
-
-        let mut vec: Vec<_> = data
-            .iter()
-            .filter_map(|(k, v)| {
-                let (g, u): (serenity::GuildId, serenity::UserId) = k.into();
-                if g == guild_id { Some((u, *v)) } else { None }
-            })
-            .collect();
-
-        vec.sort_by_key(|&(_, count)| std::cmp::Reverse(count));
-        vec
-    };
-
-    if entries.is_empty() {
-        ctx.say("no one sweared cuz everyone here is a baby")
-            .await?;
-        return Ok(());
-    }
-
-    let mut response = String::from("inmature people\n");
-    for (i, (user_id, count)) in entries.into_iter().take(10).enumerate() {
-        if let Ok(user) = user_id.to_user(ctx.serenity_context()).await {
-            response.push_str(&format!("{}. {} — {} swears\n", i + 1, user.name, count));
-        }
-    }
-
-    ctx.say(response).await?;
-    Ok(())
-}
+// #[poise::command(slash_command, prefix_command)]
+// async fn swears(ctx: Context<'_>) -> Result<(), Error> {
+//     let entries: Vec<(serenity::UserId, usize)> = {
+//         let data = ctx.data().swears.lock().await;
+//         let guild_id = ctx.guild_id().unwrap();
+//
+//         let mut vec: Vec<_> = data
+//             .iter()
+//             .filter_map(|(k, v)| {
+//                 let (g, u): (serenity::GuildId, serenity::UserId) = k.into();
+//                 if g == guild_id { Some((u, *v)) } else { None }
+//             })
+//             .collect();
+//
+//         vec.sort_by_key(|&(_, count)| std::cmp::Reverse(count));
+//         vec
+//     };
+//
+//     if entries.is_empty() {
+//         ctx.say("no one sweared cuz everyone here is a baby")
+//             .await?;
+//         return Ok(());
+//     }
+//
+//     let mut response = String::from("inmature people\n");
+//     for (i, (user_id, count)) in entries.into_iter().take(10).enumerate() {
+//         if let Ok(user) = user_id.to_user(ctx.serenity_context()).await {
+//             response.push_str(&format!("{}. {} — {} swears\n", i + 1, user.name, count));
+//         }
+//     }
+//
+//     ctx.say(response).await?;
+//     Ok(())
+// }
 
 #[poise::command(slash_command, prefix_command)]
 async fn pi(ctx: Context<'_>) -> Result<(), Error> {
@@ -209,6 +216,81 @@ async fn help(ctx: Context<'_>, command: Option<String>) -> Result<(), Error> {
     Ok(())
 }
 
+#[poise::command(slash_command, prefix_command)]
+async fn uptime(ctx: Context<'_>) -> Result<(), Error> {
+    let elapsed = ctx.data().start_time.elapsed();
+    let hours = elapsed.as_secs() / 3600;
+    let minutes = (elapsed.as_secs() % 3600) / 60;
+    let seconds = elapsed.as_secs() % 60;
+
+    ctx.say(format!(
+        "uptime: {:02}:{:02}:{:02}",
+        hours, minutes, seconds
+    ))
+    .await?;
+    Ok(())
+}
+
+#[poise::command(slash_command, prefix_command)]
+async fn user(
+    ctx: Context<'_>,
+    #[description = "User mention"] user: Option<serenity::User>,
+) -> Result<(), Error> {
+    let u = user.unwrap_or_else(|| ctx.author().clone());
+
+    let avatar_url = u.avatar_url().unwrap_or_else(|| u.default_avatar_url());
+
+    // HACK: i mean it works and i think its the only way to get author icon url
+    let author = serenity::CreateEmbedAuthor::new(&u.name)
+        .icon_url(u.avatar_url().unwrap_or_else(|| u.default_avatar_url()));
+
+    let embed_color =
+        tokio::task::block_in_place(|| get_avatar_color(&avatar_url)).unwrap_or(Color::default());
+    let embed = serenity::CreateEmbed::new()
+        // .author(|a: &mut serenity::CreateEmbedAuthor| a.name(&u.name).icon_url(avatar_url))
+        .author(author)
+        .color(embed_color)
+        .thumbnail(u.avatar_url().unwrap_or_else(|| u.default_avatar_url()))
+        .field(
+            "user info",
+            format!("id: {}\nusername: @{}", u.id, u.name),
+            false,
+        );
+
+    ctx.send(poise::CreateReply::default().embed(embed)).await?;
+    Ok(())
+}
+
+// thia function was brought to you by chatgpt
+// i mean it works? thankfully no need to read docs lol (bad for me no lie)
+fn get_avatar_color(url: &str) -> Result<Color, Box<dyn std::error::Error>> {
+    let img_bytes = get(url)?.bytes()?;
+
+    let img = image::load_from_memory(&img_bytes)?;
+    let (width, height) = img.dimensions();
+    let mut r = 0u64;
+    let mut g = 0u64;
+    let mut b = 0u64;
+
+    // go through the pixels and calculate average color
+    for x in 0..width {
+        for y in 0..height {
+            let pixel = img.get_pixel(x, y).0; // Get pixel (R, G, B, A)
+            r += pixel[0] as u64;
+            g += pixel[1] as u64;
+            b += pixel[2] as u64;
+        }
+    }
+
+    // calculate the average
+    let num_pixels = (width * height) as u64;
+    r /= num_pixels;
+    g /= num_pixels;
+    b /= num_pixels;
+
+    Ok(Color::from_rgb(r as u8, g as u8, b as u8))
+}
+
 #[tokio::main]
 async fn main() {
     let token = std::env::var("DISCORD_TOKEN").expect("missing DISCORD_TOKEN");
@@ -217,7 +299,7 @@ async fn main() {
 
     let framework = poise::Framework::builder()
         .options(poise::FrameworkOptions {
-            commands: vec![swears(), pi(), avatar(), age(), register(), help()],
+            commands: vec![pi(), avatar(), age(), register(), help(), uptime(), user()],
             prefix_options: poise::PrefixFrameworkOptions {
                 prefix: Some("-".into()),
                 ..Default::default()
@@ -225,33 +307,32 @@ async fn main() {
             #[allow(unused_variables)]
             event_handler: |ctx, event, framework, data| {
                 Box::pin(async move {
-                    if let serenity::FullEvent::Message { new_message } = event {
-                        if new_message.author.bot || new_message.content.starts_with("-") {
-                            return Ok(());
-                        }
-
-                        println!(
-                            "event_handler triggered for message: {}",
-                            new_message.content
-                        );
-
-                        let guild_id = match new_message.guild_id {
-                            Some(g) => g,
-                            None => return Ok(()), // skip DMs cuz why would it count in dms?
-                        };
-
-                        let censor = Censor::Standard + Censor::Sex;
-                        if censor.check(&new_message.content) {
-                            let mut map = data.swears.lock().await;
-                            let key = SwearKey::from((guild_id, new_message.author.id));
-                            *map.entry(key).or_insert(0) += 1;
-
-                            if let Err(e) = data.save("swears.json").await {
-                                eprintln!("failed to save swears.json: {:?}", e);
-                            }
-                        }
-                    }
-
+                    // if let serenity::FullEvent::Message { new_message } = event {
+                    //     if new_message.author.bot || new_message.content.starts_with("-") {
+                    //         return Ok(());
+                    //     }
+                    //
+                    //     println!(
+                    //         "event_handler triggered for message: {}",
+                    //         new_message.content
+                    //     );
+                    //
+                    //     let guild_id = match new_message.guild_id {
+                    //         Some(g) => g,
+                    //         None => return Ok(()), // skip DMs cuz why would it count in dms?
+                    //     };
+                    //
+                    //     let censor = Censor::Standard + Censor::Sex;
+                    //     if censor.check(&new_message.content) {
+                    //         let mut map = data.swears.lock().await;
+                    //         let key = SwearKey::from((guild_id, new_message.author.id));
+                    //         *map.entry(key).or_insert(0) += 1;
+                    //
+                    //         if let Err(e) = data.save("swears.json").await {
+                    //             eprintln!("failed to save swears.json: {:?}", e);
+                    //         }
+                    //     }
+                    // }
                     Ok(())
                 })
             },
@@ -264,9 +345,12 @@ async fn main() {
                 {
                     eprintln!("FAILED to register global commands!!! {:?}", e);
                 }
-                let swears = Data::load("swears.json").await?;
+                // let swears = Data::load("swears.json").await?;
+                // Ok(Data {
+                //     swears: Arc::new(Mutex::new(swears)),
+                // })
                 Ok(Data {
-                    swears: Arc::new(Mutex::new(swears)),
+                    start_time: Instant::now(),
                 })
             })
         })
