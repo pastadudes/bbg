@@ -3,10 +3,10 @@ use chrono::{DateTime, Utc};
 use poise::samples::HelpConfiguration;
 use poise::serenity_prelude as serenity;
 use rand::prelude::*;
+use tokio::time::{Duration, Instant, sleep_until};
 // use serde::{Deserialize, Serialize};
 // use std::collections::HashMap;
 use std::f64::consts::PI;
-use std::time::Instant;
 // use std::sync::Arc;
 // use tokio::sync::Mutex;
 use image::GenericImageView;
@@ -291,6 +291,14 @@ fn get_avatar_color(url: &str) -> Result<Color, Box<dyn std::error::Error>> {
     Ok(Color::from_rgb(r as u8, g as u8, b as u8))
 }
 
+#[poise::command(slash_command, prefix_command)]
+async fn call(ctx: Context<'_>) -> Result<(), Error> {
+    ctx.say("Calling Saul...").await?;
+    sleep_until(Instant::now() + Duration::from_secs(5)).await;
+    ctx.say("Saul: yo").await?;
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() {
     let token = std::env::var("DISCORD_TOKEN").expect("missing DISCORD_TOKEN");
@@ -299,7 +307,16 @@ async fn main() {
 
     let framework = poise::Framework::builder()
         .options(poise::FrameworkOptions {
-            commands: vec![pi(), avatar(), age(), register(), help(), uptime(), user()],
+            commands: vec![
+                pi(),
+                avatar(),
+                age(),
+                register(),
+                help(),
+                uptime(),
+                user(),
+                call(),
+            ],
             prefix_options: poise::PrefixFrameworkOptions {
                 prefix: Some("-".into()),
                 ..Default::default()
