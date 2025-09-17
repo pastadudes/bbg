@@ -1,21 +1,32 @@
 // use censor::Censor;
 use chrono::{DateTime, Utc};
+use image::GenericImageView;
 use poise::samples::HelpConfiguration;
 use poise::serenity_prelude as serenity;
 use rand::prelude::*;
+use std::io::Cursor;
 use tokio::time::{Duration, Instant, sleep_until};
 // use serde::{Deserialize, Serialize};
 // use std::collections::HashMap;
 use std::f64::consts::PI;
 // use std::sync::Arc;
 // use tokio::sync::Mutex;
-use image::GenericImageView;
 use reqwest::blocking::get;
 use serenity::model::colour::Color;
 
 struct Data {
     start_time: Instant,
 }
+/// for use in flip()  
+/// basically technically practically defines 2 parameters
+#[derive(Debug, poise::ChoiceParameter)]
+pub enum ImageOrientation {
+    #[name = "horizontally"]
+    Horizontal,
+    #[name = "vertically"]
+    Vertical,
+}
+
 // #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 // struct SwearKey {
 //     guild_id: u64,
@@ -317,6 +328,53 @@ async fn ping(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
+#[poise::command(slash_command, prefix_command)]
+async fn flip(
+    ctx: Context<'_>,
+    img: serenity::Attachment,
+    orientation: ImageOrientation,
+) -> Result<(), Error> {
+    // more time to respond
+    ctx.defer().await?;
+
+    // check if the file is an image.
+    if !img
+        .content_type
+        .as_ref()
+        // FIX: use is_some_and
+        .map_or(false, |ct| ct.starts_with("image/"))
+    {
+        ctx.say("please provide a valid image file!").await?;
+        return Ok(());
+    }
+
+    let url = img.url.clone();
+    let flipped_img = tokio::task::spawn_blocking(move || image_flip(&url, &orientation)).await??;
+
+    // encode the resulting image into a byte vector.
+    let mut image_data: Vec<u8> = Vec::new();
+    flipped_img.write_to(&mut Cursor::new(&mut image_data), image::ImageFormat::Png)?;
+
+    let reply = poise::CreateReply::default().attachment(serenity::CreateAttachment::bytes(
+        image_data,
+        format!("flipped_{}", img.filename),
+    ));
+
+    ctx.send(reply).await?;
+    Ok(())
+}
+
+fn image_flip(url: &str, orientation: &ImageOrientation) -> Result<image::DynamicImage, Error> {
+    // use image::imageops for this
+    let img_bytes = get(url)?.bytes()?;
+    let mut img = image::load_from_memory(&img_bytes)?;
+    match orientation {
+        ImageOrientation::Horizontal => image::imageops::flip_horizontal_in_place(&mut img),
+        ImageOrientation::Vertical => image::imageops::flip_vertical_in_place(&mut img),
+    };
+    Ok(img)
+}
+
 #[tokio::main]
 async fn main() {
     let token = std::env::var("DISCORD_TOKEN").expect("missing DISCORD_TOKEN");
@@ -335,6 +393,7 @@ async fn main() {
                 user(),
                 call(),
                 ping(),
+                flip(),
             ],
             prefix_options: poise::PrefixFrameworkOptions {
                 prefix: Some("-".into()),
