@@ -120,6 +120,8 @@ type Context<'a> = poise::Context<'a, Data, Error>;
 //     Ok(())
 // }
 
+/// 15 decimal pi.  
+/// also watch out theres a 0.000000001454% chance of a mutated pi
 #[poise::command(slash_command, prefix_command)]
 async fn pi(ctx: Context<'_>) -> Result<(), Error> {
     let mut pi_string = format!("{:.15}", PI); // get Pi to 15 decimal places
@@ -142,6 +144,7 @@ async fn pi(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
+/// shows a user's avatar
 #[poise::command(slash_command, prefix_command)]
 async fn avatar(
     ctx: Context<'_>,
@@ -172,6 +175,7 @@ async fn avatar(
     Ok(())
 }
 
+/// returns with the age of the discord account
 #[poise::command(slash_command, prefix_command)]
 async fn age(
     ctx: Context<'_>,
@@ -194,12 +198,15 @@ async fn age(
     Ok(())
 }
 
+/// NOT FOR PUBLIC USE!!! well nothing is stopping you  
+/// anyways it registers guild commands
 #[poise::command(slash_command, prefix_command)]
 async fn register(ctx: Context<'_>) -> Result<(), Error> {
     poise::builtins::register_application_commands_buttons(ctx).await?;
     Ok(())
 }
 
+/// HELP!!! well uh it also tracks edits. you can use -help `command` to get more info about a command
 #[poise::command(slash_command, track_edits, prefix_command)]
 async fn help(ctx: Context<'_>, command: Option<String>) -> Result<(), Error> {
     let config = HelpConfiguration {
@@ -216,6 +223,7 @@ async fn help(ctx: Context<'_>, command: Option<String>) -> Result<(), Error> {
     Ok(())
 }
 
+/// Returns the uptime of the bot
 #[poise::command(slash_command, prefix_command)]
 async fn uptime(ctx: Context<'_>) -> Result<(), Error> {
     let elapsed = ctx.data().start_time.elapsed();
@@ -231,6 +239,7 @@ async fn uptime(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
+/// Sends an embed of the user's info.
 #[poise::command(slash_command, prefix_command)]
 async fn user(
     ctx: Context<'_>,
@@ -291,11 +300,20 @@ fn get_avatar_color(url: &str) -> Result<Color, Box<dyn std::error::Error>> {
     Ok(Color::from_rgb(r as u8, g as u8, b as u8))
 }
 
+/// calls saul
 #[poise::command(slash_command, prefix_command)]
 async fn call(ctx: Context<'_>) -> Result<(), Error> {
     ctx.say("Calling Saul...").await?;
     sleep_until(Instant::now() + Duration::from_secs(5)).await;
     ctx.say("Saul: yo").await?;
+    Ok(())
+}
+
+/// Ping pong! not the game tho it just tells you if the bot is responsive (IN TIME)
+#[poise::command(slash_command, prefix_command)]
+async fn ping(ctx: Context<'_>) -> Result<(), Error> {
+    let instant = Instant::now();
+    ctx.say(format!("Pong! {:?}", instant.elapsed())).await?;
     Ok(())
 }
 
@@ -316,6 +334,7 @@ async fn main() {
                 uptime(),
                 user(),
                 call(),
+                ping(),
             ],
             prefix_options: poise::PrefixFrameworkOptions {
                 prefix: Some("-".into()),

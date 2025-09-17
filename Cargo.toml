@@ -1,6 +1,6 @@
 [package]
 name = "bbg"
-version = "0.4.0"
+version = "0.4.1"
 edition = "2024"
 description = "mostly a shitpost of functions i created that MAY or MAY not return completely wrong values (check pi())"
 license = "MIT"
