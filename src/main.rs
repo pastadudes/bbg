@@ -321,10 +321,31 @@ async fn call(ctx: Context<'_>) -> Result<(), Error> {
 }
 
 /// Ping pong! not the game tho it just tells you if the bot is responsive (IN TIME)
-#[poise::command(slash_command, prefix_command)]
+#[poise::command(prefix_command, slash_command)]
 async fn ping(ctx: Context<'_>) -> Result<(), Error> {
-    let instant = Instant::now();
-    ctx.say(format!("Pong! {:?}", instant.elapsed())).await?;
+    let before_timestamp = ctx.created_at();
+
+    // send an initial reply and get a handle to it
+    let reply_handle = ctx.say("Pong!").await?;
+
+    // retrieve the full message object from the handle
+    let message = reply_handle.message().await?;
+
+    // get the timestamp of the bot's reply message
+    let after_timestamp = message.timestamp;
+
+    // convert both timestamps into chrono to subtract
+    let before: chrono::DateTime<chrono::Utc> = before_timestamp.to_utc();
+    let after: chrono::DateTime<chrono::Utc> = after_timestamp.to_utc();
+
+    let latency = after - before;
+
+    let response_content = format!("Pong! Latency: `{}ms`", latency.num_milliseconds());
+
+    let builder = poise::CreateReply::default().content(response_content);
+
+    reply_handle.edit(ctx, builder).await?;
+
     Ok(())
 }
 
