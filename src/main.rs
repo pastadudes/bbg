@@ -1,3 +1,19 @@
+// bbg, a discord bot (that does basic things)
+// Copyright (C) 2025 pastaya
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU Affero General Public License as published
+// by the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU Affero General Public License for more details.
+//
+// You should have received a copy of the GNU Affero General Public License
+// along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
 // use censor::Censor;
 use chrono::{DateTime, Utc};
 use image::GenericImageView;
@@ -151,7 +167,7 @@ async fn pi(ctx: Context<'_>) -> Result<(), Error> {
         pi_string = new_pi_string.iter().collect();
     }
 
-    ctx.say(format!("pi is: {}", pi_string)).await?;
+    ctx.reply(format!("pi is: {}", pi_string)).await?;
     Ok(())
 }
 
@@ -204,7 +220,7 @@ async fn age(
         u.name, datetime, timestamp
     );
 
-    ctx.say(response).await?;
+    ctx.reply(response).await?;
 
     Ok(())
 }
@@ -242,7 +258,7 @@ async fn uptime(ctx: Context<'_>) -> Result<(), Error> {
     let minutes = (elapsed.as_secs() % 3600) / 60;
     let seconds = elapsed.as_secs() % 60;
 
-    ctx.say(format!(
+    ctx.reply(format!(
         "uptime: {:02}:{:02}:{:02}",
         hours, minutes, seconds
     ))
@@ -314,9 +330,9 @@ fn get_avatar_color(url: &str) -> Result<Color, Box<dyn std::error::Error>> {
 /// calls saul
 #[poise::command(slash_command, prefix_command)]
 async fn call(ctx: Context<'_>) -> Result<(), Error> {
-    ctx.say("Calling Saul...").await?;
+    ctx.reply("Calling Saul...").await?;
     sleep_until(Instant::now() + Duration::from_secs(5)).await;
-    ctx.say("Saul: yo").await?;
+    ctx.reply("Saul: yo").await?;
     Ok(())
 }
 
@@ -326,7 +342,7 @@ async fn ping(ctx: Context<'_>) -> Result<(), Error> {
     let before_timestamp = ctx.created_at();
 
     // send an initial reply and get a handle to it
-    let reply_handle = ctx.say("Pong!").await?;
+    let reply_handle = ctx.reply("Pong!").await?;
 
     // retrieve the full message object from the handle
     let message = reply_handle.message().await?;
@@ -396,6 +412,11 @@ fn image_flip(url: &str, orientation: &ImageOrientation) -> Result<image::Dynami
     Ok(img)
 }
 
+#[poise::command(prefix_command, slash_command)]
+async fn source(ctx: Context<'_>) -> Result<(), Error> {
+    ctx.reply("https://github.com/pastadudes/bbg").await?;
+    Ok(())
+}
 #[tokio::main]
 async fn main() {
     let token = std::env::var("DISCORD_TOKEN").expect("missing DISCORD_TOKEN");
@@ -415,6 +436,7 @@ async fn main() {
                 call(),
                 ping(),
                 flip(),
+                source(),
             ],
             prefix_options: poise::PrefixFrameworkOptions {
                 prefix: Some("-".into()),
