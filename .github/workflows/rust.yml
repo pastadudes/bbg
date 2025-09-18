@@ -25,11 +25,11 @@ jobs:
     - name: Build release binary
       run: cargo build --release
 
-    - name: GH Release
-  # You may pin to the exact commit or the version.
-  # uses: softprops/action-gh-release@6cbd405e2c4e67a21c47fa9e383d020e4e28b836
-      uses: softprops/action-gh-release@v2.3.3
+    - name: Upload a Build Artifact
+      uses: actions/upload-artifact@v4.6.2
       with:
-        files: ./target/release/bbg
-        # Overwrite existing files with the same name. Defaults to true
-        make_latest: true
+        # Artifact name
+        name: bbg release
+        # A file, directory or wildcard pattern that describes what to upload
+        path: ./target/release/bbg
+        # The desired behavior if no files are found using the provided path.
