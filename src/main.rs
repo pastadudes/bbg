@@ -22,6 +22,7 @@ use poise::serenity_prelude as serenity;
 use rand::prelude::*;
 use std::io::Cursor;
 use tokio::time::{Duration, Instant, sleep_until};
+use tracing::{error, trace, warn};
 // use serde::{Deserialize, Serialize};
 // use std::collections::HashMap;
 use std::f64::consts::PI;
@@ -153,9 +154,11 @@ type Context<'a> = poise::Context<'a, Data, Error>;
 #[poise::command(slash_command, prefix_command)]
 async fn pi(ctx: Context<'_>) -> Result<(), Error> {
     let mut pi_string = format!("{:.15}", PI); // get Pi to 15 decimal places
+    trace!("got pi to 15 numbers");
 
     // VERY SMALL CHANCE to mess up a digit
     if rand::rng().random_bool(0.000000001454) {
+        trace!("yo mutated pi just happened");
         let digits: Vec<char> = pi_string.chars().collect();
         let mut rng = rand::rng();
 
@@ -192,9 +195,12 @@ async fn avatar(
         .avatar_url()
         .unwrap_or_else(|| user.default_avatar_url());
 
+    let embed_color = tokio::task::block_in_place(|| get_avatar_color(&avatar_url))
+        .unwrap_or(serenity::Color::default());
     // build the embed
     let embed = serenity::CreateEmbed::new()
         .title(format!("{}'s avatar", user.name))
+        .color(embed_color)
         .image(avatar_url);
 
     // send it
@@ -221,7 +227,9 @@ async fn age(
         u.name, datetime, timestamp
     );
 
-    ctx.reply(response).await?;
+    if let Err(e) = ctx.reply(response).await {
+        error!("HEY!!! age() DIDN'T RESPOND!!!! {}", e);
+    }
 
     Ok(())
 }
@@ -516,6 +524,7 @@ async fn source(ctx: Context<'_>) -> Result<(), Error> {
 #[tokio::main]
 async fn main() {
     let token = std::env::var("DISCORD_TOKEN").expect("missing DISCORD_TOKEN");
+    trace!("got discord token");
     let intents =
         serenity::GatewayIntents::non_privileged() | serenity::GatewayIntents::MESSAGE_CONTENT;
 
@@ -577,7 +586,7 @@ async fn main() {
                 if let Err(e) =
                     poise::builtins::register_globally(ctx, &framework.options().commands).await
                 {
-                    eprintln!("FAILED to register global commands!!! {:?}", e);
+                    warn!("FAILED to register global commands!!! {:?}", e);
                 }
                 // let swears = Data::load("swears.json").await?;
                 // Ok(Data {
@@ -596,6 +605,6 @@ async fn main() {
         .expect("Error creating client");
 
     if let Err(why) = client.start().await {
-        println!("kablam! {:?}", why);
+        error!("kablam! {:?}", why);
     }
 }
