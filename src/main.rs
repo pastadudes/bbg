@@ -176,7 +176,7 @@ async fn pi(ctx: Context<'_>) -> Result<(), Error> {
 }
 
 /// shows a user's avatar
-#[poise::command(slash_command, prefix_command)]
+#[poise::command(slash_command, prefix_command, aliases("av"))]
 async fn avatar(
     ctx: Context<'_>,
     #[description = "User mention"] user: Option<serenity::User>,
