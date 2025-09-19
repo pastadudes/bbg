@@ -27,13 +27,14 @@ use tokio::time::{Duration, Instant, sleep_until};
 use std::f64::consts::PI;
 // use std::sync::Arc;
 // use tokio::sync::Mutex;
+use image::{DynamicImage, imageops};
 use reqwest::blocking::get;
 use serenity::model::colour::Color;
 
 struct Data {
     start_time: Instant,
 }
-/// for use in flip()  
+/// for use in flip_image()  
 /// basically technically practically defines 2 parameters
 #[derive(Debug, poise::ChoiceParameter)]
 pub enum ImageOrientation {
@@ -332,7 +333,7 @@ fn get_avatar_color(url: &str) -> Result<Color, Box<dyn std::error::Error>> {
 async fn call(ctx: Context<'_>) -> Result<(), Error> {
     ctx.reply("Calling Saul...").await?;
     sleep_until(Instant::now() + Duration::from_secs(5)).await;
-    ctx.reply("Saul: yo").await?;
+    ctx.say("Saul: yo").await?;
     Ok(())
 }
 
@@ -365,15 +366,109 @@ async fn ping(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
-#[poise::command(slash_command, prefix_command)]
-async fn flip(
-    ctx: Context<'_>,
-    img: serenity::Attachment,
-    orientation: ImageOrientation,
-) -> Result<(), Error> {
-    // more time to respond
-    ctx.defer().await?;
+// /// Flips an image. (you can specify horizontally or vertically)
+// #[poise::command(slash_command, prefix_command, category = "Image")]
+// async fn iflip(
+//     ctx: Context<'_>,
+//     img: serenity::Attachment,
+//     orientation: ImageOrientation,
+// ) -> Result<(), Error> {
+//     // more time to respond
+//     ctx.defer().await?;
+//
+//     // check if the file is an image.
+//     if !img
+//         .content_type
+//         .as_ref()
+//         // FIX: use is_some_and
+//         .map_or(false, |ct| ct.starts_with("image/"))
+//     {
+//         ctx.say("please provide a valid image file!").await?;
+//         return Ok(());
+//     }
+//
+//     let url = img.url.clone();
+//     let flipped_img = tokio::task::spawn_blocking(move || image_flip(&url, &orientation)).await??;
+//
+//     // encode the resulting image into a byte vector.
+//     let mut image_data: Vec<u8> = Vec::new();
+//     flipped_img.write_to(&mut Cursor::new(&mut image_data), image::ImageFormat::Png)?;
+//
+//     let reply = poise::CreateReply::default().attachment(serenity::CreateAttachment::bytes(
+//         image_data,
+//         format!("flipped_{}", img.filename),
+//     ));
+//
+//     ctx.send(reply).await?;
+//     Ok(())
+// }
+//
+// /// Blurs an image. obviously
+// #[poise::command(slash_command, prefix_command, category = "Image")]
+// async fn iblur(ctx: Context<'_>, img: serenity::Attachment, blur_amount: f32) -> Result<(), Error> {
+//     // more time to respond
+//     ctx.defer().await?;
+//
+//     // check if the file is an image.
+//     if !img
+//         .content_type
+//         .as_ref()
+//         // FIX: use is_some_and
+//         .map_or(false, |ct| ct.starts_with("image/"))
+//     {
+//         ctx.say("please provide a valid image file!").await?;
+//         return Ok(());
+//     }
+//
+//     let url = img.url.clone();
+//     let blurred_img = tokio::task::spawn_blocking(move || image_blur(&url, blur_amount)).await??;
+//
+//     // encode the resulting image into a byte vector.
+//     let mut image_data: Vec<u8> = Vec::new();
+//     blurred_img.write_to(&mut Cursor::new(&mut image_data), image::ImageFormat::Png)?;
+//
+//     let reply = poise::CreateReply::default().attachment(serenity::CreateAttachment::bytes(
+//         image_data,
+//         format!("flipped_{}", img.filename),
+//     ));
+//
+//     ctx.send(reply).await?;
+//     Ok(())
+// }
 
+pub fn process_image(
+    url: &str,
+    blur: Option<f32>,
+    orientation: Option<ImageOrientation>,
+) -> Result<DynamicImage, Error> {
+    let img_bytes = get(url)?.bytes()?;
+    let mut img = image::load_from_memory(&img_bytes)?;
+
+    // flip (probably)
+    if let Some(orientation) = orientation {
+        match orientation {
+            ImageOrientation::Horizontal => imageops::flip_horizontal_in_place(&mut img),
+            ImageOrientation::Vertical => imageops::flip_vertical_in_place(&mut img),
+        }
+    }
+
+    // BLUR!!
+    if let Some(blur_value) = blur {
+        let max_blur = 1000.0;
+        let blur_amount = blur_value.min(max_blur);
+        img = img.fast_blur(blur_amount);
+    }
+
+    Ok(img)
+}
+
+#[poise::command(slash_command, prefix_command)]
+async fn imageop(
+    ctx: poise::Context<'_, Data, Error>,
+    #[description = "The image to process"] img: serenity::Attachment,
+    #[description = "The blur amount (optional)"] blur: Option<f32>,
+    #[description = "The flip direction (optional)"] orientation: Option<ImageOrientation>, // Horizontal or Vertical
+) -> Result<(), Error> {
     // check if the file is an image.
     if !img
         .content_type
@@ -385,31 +480,32 @@ async fn flip(
         return Ok(());
     }
 
+    if blur.is_none() && orientation.is_none() {
+        ctx.say("??? bro i aint giving you the same image").await?;
+        return Ok(());
+    }
+
     let url = img.url.clone();
-    let flipped_img = tokio::task::spawn_blocking(move || image_flip(&url, &orientation)).await??;
+    // Here we call our existing image processing function
+    let result =
+        tokio::task::spawn_blocking(move || process_image(&url, blur, orientation)).await?;
 
-    // encode the resulting image into a byte vector.
-    let mut image_data: Vec<u8> = Vec::new();
-    flipped_img.write_to(&mut Cursor::new(&mut image_data), image::ImageFormat::Png)?;
-
-    let reply = poise::CreateReply::default().attachment(serenity::CreateAttachment::bytes(
-        image_data,
-        format!("flipped_{}", img.filename),
-    ));
-
-    ctx.send(reply).await?;
-    Ok(())
-}
-
-fn image_flip(url: &str, orientation: &ImageOrientation) -> Result<image::DynamicImage, Error> {
-    // use image::imageops for this
-    let img_bytes = get(url)?.bytes()?;
-    let mut img = image::load_from_memory(&img_bytes)?;
-    match orientation {
-        ImageOrientation::Horizontal => image::imageops::flip_horizontal_in_place(&mut img),
-        ImageOrientation::Vertical => image::imageops::flip_vertical_in_place(&mut img),
-    };
-    Ok(img)
+    match result {
+        Ok(finished_img) => {
+            // prepare for lots of uhhhh something
+            let mut img_data: Vec<u8> = Vec::new();
+            finished_img.write_to(&mut Cursor::new(&mut img_data), image::ImageFormat::Png)?;
+            let reply = poise::CreateReply::default().attachment(
+                serenity::CreateAttachment::bytes(img_data, format!("new!!!_{}", img.filename)),
+            );
+            ctx.send(reply).await?;
+            Ok(())
+        }
+        Err(e) => {
+            ctx.say(format!("kaBOOMM! {}", e)).await?;
+            Err(e)
+        }
+    }
 }
 
 #[poise::command(prefix_command, slash_command)]
@@ -435,8 +531,8 @@ async fn main() {
                 user(),
                 call(),
                 ping(),
-                flip(),
                 source(),
+                imageop(),
             ],
             prefix_options: poise::PrefixFrameworkOptions {
                 prefix: Some("-".into()),
