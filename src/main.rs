@@ -22,7 +22,7 @@ use poise::serenity_prelude as serenity;
 use rand::prelude::*;
 use std::io::Cursor;
 use tokio::time::{Duration, Instant, sleep_until};
-use tracing::{error, trace, warn};
+use tracing::{error, info, trace, warn};
 // use serde::{Deserialize, Serialize};
 // use std::collections::HashMap;
 use std::f64::consts::PI;
@@ -158,7 +158,7 @@ async fn pi(ctx: Context<'_>) -> Result<(), Error> {
 
     // VERY SMALL CHANCE to mess up a digit
     if rand::rng().random_bool(0.000000001454) {
-        trace!("yo mutated pi just happened");
+        info!("yo mutated pi just happened");
         let digits: Vec<char> = pi_string.chars().collect();
         let mut rng = rand::rng();
 
@@ -171,7 +171,9 @@ async fn pi(ctx: Context<'_>) -> Result<(), Error> {
         pi_string = new_pi_string.iter().collect();
     }
 
-    ctx.reply(format!("pi is: {}", pi_string)).await?;
+    if let Err(e) = ctx.reply(format!("pi is: {}", pi_string)).await {
+        error!("HEY!!! pi() didn't respond {}", e);
+    }
     Ok(())
 }
 
@@ -204,7 +206,9 @@ async fn avatar(
         .image(avatar_url);
 
     // send it
-    ctx.send(poise::CreateReply::default().embed(embed)).await?;
+    if let Err(e) = ctx.send(poise::CreateReply::default().embed(embed)).await {
+        error!("HEYY!!! avatar() DIDN'T RESPOND!! {}", e);
+    }
 
     Ok(())
 }
@@ -260,23 +264,27 @@ async fn help(ctx: Context<'_>, command: Option<String>) -> Result<(), Error> {
 }
 
 /// Returns the uptime of the bot
-#[poise::command(slash_command, prefix_command)]
+#[poise::command(slash_command, prefix_command, aliases("up", "ut"))]
 async fn uptime(ctx: Context<'_>) -> Result<(), Error> {
     let elapsed = ctx.data().start_time.elapsed();
     let hours = elapsed.as_secs() / 3600;
     let minutes = (elapsed.as_secs() % 3600) / 60;
     let seconds = elapsed.as_secs() % 60;
 
-    ctx.reply(format!(
-        "uptime: {:02}:{:02}:{:02}",
-        hours, minutes, seconds
-    ))
-    .await?;
+    if let Err(e) = ctx
+        .reply(format!(
+            "uptime: {:02}:{:02}:{:02}",
+            hours, minutes, seconds
+        ))
+        .await
+    {
+        error!("HEY!!! uptime() DIDN'T RESPOND!! {}", e);
+    }
     Ok(())
 }
 
 /// Sends an embed of the user's info.
-#[poise::command(slash_command, prefix_command)]
+#[poise::command(slash_command, prefix_command, aliases("users", "u"))]
 async fn user(
     ctx: Context<'_>,
     #[description = "User mention"] user: Option<serenity::User>,
@@ -302,7 +310,9 @@ async fn user(
             false,
         );
 
-    ctx.send(poise::CreateReply::default().embed(embed)).await?;
+    if let Err(e) = ctx.send(poise::CreateReply::default().embed(embed)).await {
+        error!("HEYY!! user() DIDNT RESPOND!! {}", e);
+    }
     Ok(())
 }
 
@@ -346,8 +356,9 @@ async fn call(ctx: Context<'_>) -> Result<(), Error> {
 }
 
 /// Ping pong! not the game tho it just tells you if the bot is responsive (IN TIME)
-#[poise::command(prefix_command, slash_command)]
+#[poise::command(prefix_command, slash_command, aliases("p"))]
 async fn ping(ctx: Context<'_>) -> Result<(), Error> {
+    // TODO: uhh add error handling
     let before_timestamp = ctx.created_at();
 
     // send an initial reply and get a handle to it
@@ -374,80 +385,11 @@ async fn ping(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
-// /// Flips an image. (you can specify horizontally or vertically)
-// #[poise::command(slash_command, prefix_command, category = "Image")]
-// async fn iflip(
-//     ctx: Context<'_>,
-//     img: serenity::Attachment,
-//     orientation: ImageOrientation,
-// ) -> Result<(), Error> {
-//     // more time to respond
-//     ctx.defer().await?;
-//
-//     // check if the file is an image.
-//     if !img
-//         .content_type
-//         .as_ref()
-//         // FIX: use is_some_and
-//         .map_or(false, |ct| ct.starts_with("image/"))
-//     {
-//         ctx.say("please provide a valid image file!").await?;
-//         return Ok(());
-//     }
-//
-//     let url = img.url.clone();
-//     let flipped_img = tokio::task::spawn_blocking(move || image_flip(&url, &orientation)).await??;
-//
-//     // encode the resulting image into a byte vector.
-//     let mut image_data: Vec<u8> = Vec::new();
-//     flipped_img.write_to(&mut Cursor::new(&mut image_data), image::ImageFormat::Png)?;
-//
-//     let reply = poise::CreateReply::default().attachment(serenity::CreateAttachment::bytes(
-//         image_data,
-//         format!("flipped_{}", img.filename),
-//     ));
-//
-//     ctx.send(reply).await?;
-//     Ok(())
-// }
-//
-// /// Blurs an image. obviously
-// #[poise::command(slash_command, prefix_command, category = "Image")]
-// async fn iblur(ctx: Context<'_>, img: serenity::Attachment, blur_amount: f32) -> Result<(), Error> {
-//     // more time to respond
-//     ctx.defer().await?;
-//
-//     // check if the file is an image.
-//     if !img
-//         .content_type
-//         .as_ref()
-//         // FIX: use is_some_and
-//         .map_or(false, |ct| ct.starts_with("image/"))
-//     {
-//         ctx.say("please provide a valid image file!").await?;
-//         return Ok(());
-//     }
-//
-//     let url = img.url.clone();
-//     let blurred_img = tokio::task::spawn_blocking(move || image_blur(&url, blur_amount)).await??;
-//
-//     // encode the resulting image into a byte vector.
-//     let mut image_data: Vec<u8> = Vec::new();
-//     blurred_img.write_to(&mut Cursor::new(&mut image_data), image::ImageFormat::Png)?;
-//
-//     let reply = poise::CreateReply::default().attachment(serenity::CreateAttachment::bytes(
-//         image_data,
-//         format!("flipped_{}", img.filename),
-//     ));
-//
-//     ctx.send(reply).await?;
-//     Ok(())
-// }
-
 pub fn process_image(
     url: &str,
     blur: Option<f32>,
     orientation: Option<ImageOrientation>,
+    grayscale: Option<bool>,
 ) -> Result<DynamicImage, Error> {
     let img_bytes = get(url)?.bytes()?;
     let mut img = image::load_from_memory(&img_bytes)?;
@@ -467,15 +409,22 @@ pub fn process_image(
         img = img.fast_blur(blur_amount);
     }
 
+    #[allow(unused_variables)]
+    if let Some(true) = grayscale {
+        img = img.grayscale();
+    }
+
     Ok(img)
 }
 
+/// Perform operations on an image.
 #[poise::command(slash_command, prefix_command)]
 async fn imageop(
     ctx: poise::Context<'_, Data, Error>,
     #[description = "The image to process"] img: serenity::Attachment,
     #[description = "The blur amount (optional)"] blur: Option<f32>,
     #[description = "The flip direction (optional)"] orientation: Option<ImageOrientation>, // Horizontal or Vertical
+    #[description = "Set to true for grayscale"] grayscale: Option<bool>,
 ) -> Result<(), Error> {
     // check if the file is an image.
     if !img
@@ -488,7 +437,7 @@ async fn imageop(
         return Ok(());
     }
 
-    if blur.is_none() && orientation.is_none() {
+    if blur.is_none() && orientation.is_none() && grayscale.is_none() {
         ctx.say("??? bro i aint giving you the same image").await?;
         return Ok(());
     }
@@ -496,7 +445,8 @@ async fn imageop(
     let url = img.url.clone();
     // Here we call our existing image processing function
     let result =
-        tokio::task::spawn_blocking(move || process_image(&url, blur, orientation)).await?;
+        tokio::task::spawn_blocking(move || process_image(&url, blur, orientation, grayscale))
+            .await?;
 
     match result {
         Ok(finished_img) => {
@@ -518,6 +468,7 @@ async fn imageop(
 
 #[poise::command(prefix_command, slash_command)]
 async fn source(ctx: Context<'_>) -> Result<(), Error> {
+    // ehh this doesn't need error handling
     ctx.reply("https://github.com/pastadudes/bbg").await?;
     Ok(())
 }
