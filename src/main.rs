@@ -472,6 +472,23 @@ async fn source(ctx: Context<'_>) -> Result<(), Error> {
     ctx.reply("https://github.com/pastadudes/bbg").await?;
     Ok(())
 }
+
+#[poise::command(prefix_command, slash_command)]
+async fn ipv4(ctx: Context<'_>) -> Result<(), Error> {
+    let mut rng = rand::rngs::StdRng::from_os_rng();
+
+    let octet1: u8 = rng.random_range(0..=255);
+    let octet2: u8 = rng.random_range(0..=255);
+    let octet3: u8 = rng.random_range(0..=255);
+    let octet4: u8 = rng.random_range(0..=255);
+
+    let ip = format!("{}.{}.{}.{}", octet1, octet2, octet3, octet4);
+
+    ctx.reply(format!("heres a (non)vaild ip address: {}", ip))
+        .await?;
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() {
     let token = std::env::var("DISCORD_TOKEN").expect("missing DISCORD_TOKEN");
@@ -493,6 +510,7 @@ async fn main() {
                 ping(),
                 source(),
                 imageop(),
+                ipv4(),
             ],
             prefix_options: poise::PrefixFrameworkOptions {
                 prefix: Some("-".into()),
