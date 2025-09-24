@@ -1,9 +1,9 @@
 [package]
 name = "bbg"
-version = "0.7.1"
+version = "0.7.2"
 edition = "2024"
 description = "mostly a shitpost of functions i created that MAY or MAY not return completely wrong values (check pi())"
-license = "MIT"
+license = "AGPL-3.0-or-later"                                                                                            # finally fixed the license
 
 [dependencies]
 # censor = "0.3.0"
@@ -15,9 +15,5 @@ reqwest = { version = "0.12.23", features = ["blocking"] }
 # serde = "1.0.223"
 # serde_json = "1.0.145"
 serenity = "0.12"
-tokio = { version = "1.21.2", features = [
-  "macros",
-  "rt-multi-thread",
-  "process",
-] }
+tokio = { version = "1.21.2", features = ["macros", "rt-multi-thread"] }
 tracing = "0.1.41"

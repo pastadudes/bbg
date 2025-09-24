@@ -473,6 +473,7 @@ async fn source(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
+/// Get a random ip address
 #[poise::command(prefix_command, slash_command)]
 async fn ipv4(ctx: Context<'_>) -> Result<(), Error> {
     let mut rng = rand::rngs::StdRng::from_os_rng();
@@ -484,8 +485,11 @@ async fn ipv4(ctx: Context<'_>) -> Result<(), Error> {
 
     let ip = format!("{}.{}.{}.{}", octet1, octet2, octet3, octet4);
 
-    ctx.reply(format!("heres a (non)vaild ip address: {}", ip))
-        .await?;
+    ctx.reply(format!(
+        "heres a vaild ip address (may not be online): {}",
+        ip
+    ))
+    .await?;
     Ok(())
 }
 
