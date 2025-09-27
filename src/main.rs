@@ -18,6 +18,7 @@ use chrono::{DateTime, Utc};
 use image::GenericImageView;
 use image::{DynamicImage, ImageBuffer, ImageFormat, Rgb, imageops};
 use plotters::prelude::*;
+use plotters::style::full_palette::ORANGE;
 use poise::samples::HelpConfiguration;
 use poise::serenity_prelude as serenity;
 use rand::prelude::*;
@@ -475,18 +476,8 @@ async fn activity(ctx: Context<'_>) -> Result<(), Error> {
                     .map_err(|e| format!("graph creation failed: {}", e))?;
 
             let attachment = serenity::CreateAttachment::bytes(chart_data, "activity.png");
-            let embed = serenity::CreateEmbed::new()
-                .title("TETR.IO Server Activity")
-                .color(serenity::colours::branding::FUCHSIA)
-                .image("attachment://activity.png")
-                .description("Server activity over time");
-
-            ctx.send(
-                poise::CreateReply::default()
-                    .embed(embed)
-                    .attachment(attachment),
-            )
-            .await?;
+            ctx.send(poise::CreateReply::default().attachment(attachment))
+                .await?;
             Ok(())
         }
         Packet {
@@ -530,7 +521,7 @@ fn create_activity_chart(data: &[f64]) -> Result<Vec<u8>, BoxedError> {
         let y_max = max_val + pad;
 
         let mut chart = ChartBuilder::on(&root)
-            .caption("TETR.IO Server Activity", ("sans-serif", 25))
+            .caption("tetrio server activity", ("sans-serif", 25))
             .margin(20)
             .x_label_area_size(40)
             .y_label_area_size(50)
@@ -538,13 +529,13 @@ fn create_activity_chart(data: &[f64]) -> Result<Vec<u8>, BoxedError> {
 
         chart
             .configure_mesh()
-            .x_desc("Time")
-            .y_desc("Players")
+            .x_desc("time")
+            .y_desc("players")
             .draw()?;
 
         chart.draw_series(LineSeries::new(
             data.iter().enumerate().map(|(i, &v)| (i as f64, v)),
-            &RED,
+            &ORANGE,
         ))?;
 
         root.present()?;
