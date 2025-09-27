@@ -14,23 +14,20 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-// use censor::Censor;
 use chrono::{DateTime, Utc};
 use image::GenericImageView;
+use image::{DynamicImage, ImageBuffer, ImageFormat, Rgb, imageops};
+use plotters::prelude::*;
 use poise::samples::HelpConfiguration;
 use poise::serenity_prelude as serenity;
 use rand::prelude::*;
-use std::io::Cursor;
-use tokio::time::{Duration, Instant, sleep_until};
-use tracing::{error, info, trace, warn};
-// use serde::{Deserialize, Serialize};
-// use std::collections::HashMap;
-use std::f64::consts::PI;
-// use std::sync::Arc;
-// use tokio::sync::Mutex;
-use image::{DynamicImage, imageops};
 use reqwest::blocking::get;
 use serenity::model::colour::Color;
+use std::f64::consts::PI;
+use std::io::Cursor;
+use tetrio_api::{http::clients::reqwest_client::InMemoryReqwestClient, models::packet::Packet};
+use tokio::time::{Duration, Instant, sleep_until};
+use tracing::{error, info, trace, warn};
 
 struct Data {
     start_time: Instant,
@@ -45,109 +42,8 @@ pub enum ImageOrientation {
     Vertical,
 }
 
-// #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-// struct SwearKey {
-//     guild_id: u64,
-//     user_id: u64,
-// }
-//
-// impl From<(serenity::GuildId, serenity::UserId)> for SwearKey {
-//     fn from((g, u): (serenity::GuildId, serenity::UserId)) -> Self {
-//         Self {
-//             guild_id: g.get(),
-//             user_id: u.get(),
-//         }
-//     }
-// }
-//
-// impl From<&SwearKey> for (serenity::GuildId, serenity::UserId) {
-//     fn from(k: &SwearKey) -> Self {
-//         (
-//             serenity::GuildId::new(k.guild_id),
-//             serenity::UserId::new(k.user_id),
-//         )
-//     }
-// }
-//
-// struct Data {
-//     swears: Arc<Mutex<HashMap<SwearKey, usize>>>,
-// }
-//
-// impl Data {
-//     /// Save by cloning the map and writing that snapshot to disk.
-//     async fn save(&self, path: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-//         // take short lock and clone
-//         let snapshot = {
-//             let guard = self.swears.lock().await;
-//             guard.clone()
-//         };
-//
-//         // ensure parent exists
-//         if let Some(parent) = std::path::Path::new(path).parent() {
-//             if !parent.as_os_str().is_empty() {
-//                 tokio::fs::create_dir_all(parent).await?;
-//             }
-//         }
-//
-//         // write to tmp then rename for atomicity
-//         let tmp = format!("{}.tmp", path);
-//         let json = serde_json::to_string_pretty(&snapshot)?;
-//         tokio::fs::write(&tmp, json.as_bytes()).await?;
-//         tokio::fs::rename(&tmp, path).await?;
-//         Ok(())
-//     }
-//
-//     async fn load(
-//         path: &str,
-//     ) -> Result<HashMap<SwearKey, usize>, Box<dyn std::error::Error + Send + Sync>> {
-//         match tokio::fs::read_to_string(path).await {
-//             Ok(content) => Ok(serde_json::from_str(&content)?),
-//             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(HashMap::new()),
-//             Err(e) => {
-//                 eprintln!("failed to read {}: {:?}", path, e);
-//                 Err(Box::new(e))
-//             }
-//         }
-//     }
-// }
-
 type Error = Box<dyn std::error::Error + Send + Sync>;
 type Context<'a> = poise::Context<'a, Data, Error>;
-
-// #[poise::command(slash_command, prefix_command)]
-// async fn swears(ctx: Context<'_>) -> Result<(), Error> {
-//     let entries: Vec<(serenity::UserId, usize)> = {
-//         let data = ctx.data().swears.lock().await;
-//         let guild_id = ctx.guild_id().unwrap();
-//
-//         let mut vec: Vec<_> = data
-//             .iter()
-//             .filter_map(|(k, v)| {
-//                 let (g, u): (serenity::GuildId, serenity::UserId) = k.into();
-//                 if g == guild_id { Some((u, *v)) } else { None }
-//             })
-//             .collect();
-//
-//         vec.sort_by_key(|&(_, count)| std::cmp::Reverse(count));
-//         vec
-//     };
-//
-//     if entries.is_empty() {
-//         ctx.say("no one sweared cuz everyone here is a baby")
-//             .await?;
-//         return Ok(());
-//     }
-//
-//     let mut response = String::from("inmature people\n");
-//     for (i, (user_id, count)) in entries.into_iter().take(10).enumerate() {
-//         if let Ok(user) = user_id.to_user(ctx.serenity_context()).await {
-//             response.push_str(&format!("{}. {} — {} swears\n", i + 1, user.name, count));
-//         }
-//     }
-//
-//     ctx.say(response).await?;
-//     Ok(())
-// }
 
 /// 15 decimal pi.  
 /// also watch out theres a 0.000000001454% chance of a mutated pi
@@ -493,6 +389,176 @@ async fn ipv4(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
+#[poise::command(
+    prefix_command,
+    slash_command,
+    subcommands(
+        "tetrio_user",
+        // "records",
+        // "league",
+        // "stats",
+        "activity",
+        // "leaderboard"
+    )
+)]
+async fn tetrio(_ctx: Context<'_>) -> Result<(), Error> {
+    Ok(())
+}
+
+fn calculate_tetrio_level(xp: f64) -> f64 {
+    let xp =
+        (xp / 500.0).powf(0.6) + (xp / (5000.0 + f64::max(0.0, xp - 4000000.0) / 5000.0)) + 1.0;
+    xp.trunc()
+}
+
+#[poise::command(prefix_command, slash_command, rename = "user")]
+async fn tetrio_user(ctx: Context<'_>, username: String) -> Result<(), Error> {
+    let client = InMemoryReqwestClient::default();
+    let user = client
+        .fetch_user_info(&username)
+        .await
+        .expect("maybe this crate is a bit too old?");
+    match &user {
+        Packet {
+            data: Some(_data), ..
+        } => {
+            let embed_author = serenity::CreateEmbedAuthor::new(&_data.username);
+            let direct_xp = &_data.xp;
+            let mut xp = direct_xp.to_string();
+            xp.push_str(" XP");
+
+            let tetrio_info = serenity::CreateEmbed::new()
+                .author(embed_author)
+                .color(serenity::colours::branding::BLURPLE)
+                .field("tetrio user id:", &_data.id, false)
+                .field("xp:", xp, false)
+                .field(
+                    "level:",
+                    calculate_tetrio_level(*direct_xp).to_string(),
+                    true,
+                )
+                .field("role", format!("{:?}", &_data.role), false);
+            ctx.send(poise::CreateReply::default().embed(tetrio_info))
+                .await?;
+            Ok(())
+        }
+        Packet { error, .. } => {
+            eprintln!(
+                "An error has occured while trying to fetch the user! {:?}",
+                error
+            );
+            Ok(())
+        }
+    }
+}
+
+#[poise::command(slash_command, prefix_command)]
+async fn activity(ctx: Context<'_>) -> Result<(), Error> {
+    let client = InMemoryReqwestClient::default();
+
+    let server_activity = client
+        .fetch_general_activity()
+        .await
+        .map_err(|e| format!("failed to fetch activity ;( {}", e))?;
+
+    match server_activity {
+        Packet {
+            data: Some(data), ..
+        } => {
+            let activity_f64: Vec<f64> = data.activity.iter().map(|&x| x as f64).collect();
+
+            // Create the chart in a blocking task
+            let chart_data =
+                tokio::task::spawn_blocking(move || create_activity_chart(&activity_f64))
+                    .await
+                    .map_err(|e| format!("task failed: {}", e))?
+                    .map_err(|e| format!("graph creation failed: {}", e))?;
+
+            let attachment = serenity::CreateAttachment::bytes(chart_data, "activity.png");
+            let embed = serenity::CreateEmbed::new()
+                .title("TETR.IO Server Activity")
+                .color(serenity::colours::branding::FUCHSIA)
+                .image("attachment://activity.png")
+                .description("Server activity over time");
+
+            ctx.send(
+                poise::CreateReply::default()
+                    .embed(embed)
+                    .attachment(attachment),
+            )
+            .await?;
+            Ok(())
+        }
+        Packet {
+            error: Some(err), ..
+        } => {
+            ctx.say(format!("error fetching activity! {:?}", err))
+                .await?;
+            Ok(())
+        }
+        _ => {
+            ctx.say("bruh failed to fetch server activity").await?;
+            Ok(())
+        }
+    }
+}
+
+type BoxedError = Box<dyn std::error::Error + Send + Sync>; // idk felt sassy and idiomatic today
+
+fn create_activity_chart(data: &[f64]) -> Result<Vec<u8>, BoxedError> {
+    const W: u32 = 800;
+    const H: u32 = 400;
+    const BYTES_PER_PIXEL: usize = 3;
+
+    // 1. raw RGB buffer (plotters wants &mut [u8])
+    let mut raw = vec![0u8; (W * H) as usize * BYTES_PER_PIXEL];
+
+    {
+        // 2. draw into that raw buffer (probably)
+        let root = BitMapBackend::with_buffer(&mut raw, (W, H)).into_drawing_area();
+        root.fill(&WHITE)?;
+
+        let (min_val, max_val) = match (
+            data.iter().cloned().reduce(f64::min),
+            data.iter().cloned().reduce(f64::max),
+        ) {
+            (Some(min), Some(max)) => (min, max),
+            _ => return Err("no data".into()),
+        };
+        let pad = (max_val - min_val) * 0.1;
+        let y_min = (min_val - pad).max(0.0);
+        let y_max = max_val + pad;
+
+        let mut chart = ChartBuilder::on(&root)
+            .caption("TETR.IO Server Activity", ("sans-serif", 25))
+            .margin(20)
+            .x_label_area_size(40)
+            .y_label_area_size(50)
+            .build_cartesian_2d(0f64..data.len() as f64, y_min..y_max)?;
+
+        chart
+            .configure_mesh()
+            .x_desc("Time")
+            .y_desc("Players")
+            .draw()?;
+
+        chart.draw_series(LineSeries::new(
+            data.iter().enumerate().map(|(i, &v)| (i as f64, v)),
+            &RED,
+        ))?;
+
+        root.present()?;
+    }
+
+    // 3. wrap raw rgb bytes in an `RgbImage` and encode to png
+    let rgb_img: ImageBuffer<Rgb<u8>, _> =
+        ImageBuffer::from_raw(W, H, raw).ok_or("buffer size mismatch")?;
+    let mut png_bytes = Vec::new();
+    rgb_img.write_to(&mut Cursor::new(&mut png_bytes), ImageFormat::Png)?;
+
+    Ok(png_bytes)
+}
+
 #[tokio::main]
 async fn main() {
     let token = std::env::var("DISCORD_TOKEN").expect("missing DISCORD_TOKEN");
@@ -515,6 +581,9 @@ async fn main() {
                 source(),
                 imageop(),
                 ipv4(),
+                tetrio(),
+                tetrio_user(),
+                activity(),
             ],
             prefix_options: poise::PrefixFrameworkOptions {
                 prefix: Some("-".into()),

@@ -1,6 +1,6 @@
 [package]
 name = "bbg"
-version = "0.7.2"
+version = "0.8.0"
 edition = "2024"
 description = "mostly a shitpost of functions i created that MAY or MAY not return completely wrong values (check pi())"
 license = "AGPL-3.0-or-later"                                                                                            # finally fixed the license
@@ -9,11 +9,13 @@ license = "AGPL-3.0-or-later"                                                   
 # censor = "0.3.0"
 chrono = "0.4.42"
 image = "0.25.8"
+plotters = "0.3.7"
 poise = "0.6.1"
 rand = "0.9.2"
 reqwest = { version = "0.12.23", features = ["blocking"] }
 # serde = "1.0.223"
 # serde_json = "1.0.145"
 serenity = "0.12"
+tetrio-api = "0.6.0"
 tokio = { version = "1.21.2", features = ["macros", "rt-multi-thread"] }
 tracing = "0.1.41"
