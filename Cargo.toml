@@ -1,6 +1,6 @@
 [package]
 name = "bbg"
-version = "0.8.1"
+version = "0.8.2"
 edition = "2024"
 description = "mostly a shitpost of functions i created that MAY or MAY not return completely wrong values (check pi())"
 license = "AGPL-3.0-or-later"                                                                                            # finally fixed the license

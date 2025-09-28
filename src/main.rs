@@ -26,6 +26,7 @@ use reqwest::blocking::get;
 use serenity::model::colour::Color;
 use std::f64::consts::PI;
 use std::io::Cursor;
+use tetrio_api::http::parameters::leaderboard_query::LeaderboardType;
 use tetrio_api::{http::clients::reqwest_client::InMemoryReqwestClient, models::packet::Packet};
 use tokio::time::{Duration, Instant, sleep_until};
 use tracing::{error, info, trace, warn};
@@ -78,8 +79,8 @@ async fn pi(ctx: Context<'_>) -> Result<(), Error> {
 #[poise::command(slash_command, prefix_command, aliases("av"))]
 async fn avatar(
     ctx: Context<'_>,
-    #[description = "User mention"] user: Option<serenity::User>,
-    #[description = "User ID"] user_id: Option<serenity::UserId>,
+    #[description = "user mention"] user: Option<serenity::User>,
+    #[description = "user ID"] user_id: Option<serenity::UserId>,
 ) -> Result<(), Error> {
     // decide whose avatar to show
     let user: serenity::User = if let Some(user) = user {
@@ -147,7 +148,7 @@ async fn register(ctx: Context<'_>) -> Result<(), Error> {
 #[poise::command(slash_command, track_edits, prefix_command)]
 async fn help(ctx: Context<'_>, command: Option<String>) -> Result<(), Error> {
     let config = HelpConfiguration {
-        ephemeral: true,
+        ephemeral: false,
         include_description: true,
         show_context_menu_commands: true,
         show_subcommands: true,
@@ -402,7 +403,8 @@ async fn ipv4(ctx: Context<'_>) -> Result<(), Error> {
         // "leaderboard"
     )
 )]
-async fn tetrio(_ctx: Context<'_>) -> Result<(), Error> {
+async fn tetrio(ctx: Context<'_>) -> Result<(), Error> {
+    ctx.reply("you forgot the subcommand...").await?;
     Ok(())
 }
 
@@ -445,7 +447,7 @@ async fn tetrio_user(ctx: Context<'_>, username: String) -> Result<(), Error> {
         }
         Packet { error, .. } => {
             eprintln!(
-                "An error has occured while trying to fetch the user! {:?}",
+                "an error has occured while trying to fetch the user! {:?}",
                 error
             );
             Ok(())
@@ -453,7 +455,7 @@ async fn tetrio_user(ctx: Context<'_>, username: String) -> Result<(), Error> {
     }
 }
 
-#[poise::command(slash_command, prefix_command)]
+#[poise::command(slash_command, prefix_command, broadcast_typing)]
 async fn activity(ctx: Context<'_>) -> Result<(), Error> {
     let client = InMemoryReqwestClient::default();
 
@@ -494,9 +496,7 @@ async fn activity(ctx: Context<'_>) -> Result<(), Error> {
     }
 }
 
-type BoxedError = Box<dyn std::error::Error + Send + Sync>; // idk felt sassy and idiomatic today
-
-fn create_activity_chart(data: &[f64]) -> Result<Vec<u8>, BoxedError> {
+fn create_activity_chart(data: &[f64]) -> Result<Vec<u8>, Error> {
     const W: u32 = 800;
     const H: u32 = 400;
     const BYTES_PER_PIXEL: usize = 3;
@@ -550,6 +550,12 @@ fn create_activity_chart(data: &[f64]) -> Result<Vec<u8>, BoxedError> {
     Ok(png_bytes)
 }
 
+// #[poise::command(prefix_command, slash_command)]
+// async fn leaderboard(ctx: Context<'_>) -> Result<(), Error> {
+//     let client = &InMemoryReqwestClient::default();
+//     let tetrio_leaderboard = client.fetch_leaderboard(LeaderboardType::League, query, session_id)
+// }
+
 #[tokio::main]
 async fn main() {
     let token = std::env::var("DISCORD_TOKEN").expect("missing DISCORD_TOKEN");
@@ -573,8 +579,6 @@ async fn main() {
                 imageop(),
                 ipv4(),
                 tetrio(),
-                tetrio_user(),
-                activity(),
             ],
             prefix_options: poise::PrefixFrameworkOptions {
                 prefix: Some("-".into()),
