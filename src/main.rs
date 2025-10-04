@@ -17,6 +17,7 @@
 use chrono::{DateTime, Utc};
 use image::GenericImageView;
 use image::{DynamicImage, ImageBuffer, ImageFormat, Rgb, imageops};
+use mlua::Value;
 use plotters::prelude::*;
 use plotters::style::full_palette::ORANGE;
 use poise::samples::HelpConfiguration;
@@ -27,6 +28,8 @@ use serenity::model::colour::Color;
 use std::f64::consts::PI;
 use std::io::Cursor;
 use tetrio_api::http::parameters::leaderboard_query::LeaderboardType;
+use tetrio_api::http::parameters::value_bound_query::*;
+use tetrio_api::models::users::user_rank::UserRank;
 use tetrio_api::{http::clients::reqwest_client::InMemoryReqwestClient, models::packet::Packet};
 use tokio::time::{Duration, Instant, sleep_until};
 use tracing::{error, info, trace, warn};
@@ -34,6 +37,7 @@ use tracing::{error, info, trace, warn};
 struct Data {
     start_time: Instant,
 }
+
 /// for use in flip_image()  
 /// basically technically practically defines 2 parameters
 #[derive(Debug, poise::ChoiceParameter)]
@@ -391,6 +395,7 @@ async fn ipv4(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
+/// tetrio related commands, DO NOT USE STANDALONE!! YOU MUST SPECIFY A SUBCOMMAND!!
 #[poise::command(
     prefix_command,
     slash_command,
@@ -400,7 +405,7 @@ async fn ipv4(ctx: Context<'_>) -> Result<(), Error> {
         // "league",
         // "stats",
         "activity",
-        // "leaderboard"
+        "leaderboard"
     )
 )]
 async fn tetrio(ctx: Context<'_>) -> Result<(), Error> {
@@ -423,24 +428,24 @@ async fn tetrio_user(ctx: Context<'_>, username: String) -> Result<(), Error> {
         .expect("maybe this crate is a bit too old?");
     match &user {
         Packet {
-            data: Some(_data), ..
+            data: Some(data), ..
         } => {
-            let embed_author = serenity::CreateEmbedAuthor::new(&_data.username);
-            let direct_xp = &_data.xp;
+            let embed_author = serenity::CreateEmbedAuthor::new(&data.username);
+            let direct_xp = &data.xp;
             let mut xp = direct_xp.to_string();
             xp.push_str(" XP");
 
             let tetrio_info = serenity::CreateEmbed::new()
                 .author(embed_author)
                 .color(serenity::colours::branding::BLURPLE)
-                .field("tetrio user id:", &_data.id, false)
+                .field("tetrio user id:", &data.id, false)
                 .field("xp:", xp, false)
                 .field(
                     "level:",
                     calculate_tetrio_level(*direct_xp).to_string(),
                     true,
                 )
-                .field("role", format!("{:?}", &_data.role), false);
+                .field("role", format!("{:?}", &data.role), false);
             ctx.send(poise::CreateReply::default().embed(tetrio_info))
                 .await?;
             Ok(())
@@ -455,6 +460,7 @@ async fn tetrio_user(ctx: Context<'_>, username: String) -> Result<(), Error> {
     }
 }
 
+/// Shows general activity of tetrio
 #[poise::command(slash_command, prefix_command, broadcast_typing)]
 async fn activity(ctx: Context<'_>) -> Result<(), Error> {
     let client = InMemoryReqwestClient::default();
@@ -470,7 +476,7 @@ async fn activity(ctx: Context<'_>) -> Result<(), Error> {
         } => {
             let activity_f64: Vec<f64> = data.activity.iter().map(|&x| x as f64).collect();
 
-            // Create the chart in a blocking task
+            // create the chart in a blocking task
             let chart_data =
                 tokio::task::spawn_blocking(move || create_activity_chart(&activity_f64))
                     .await
@@ -482,15 +488,9 @@ async fn activity(ctx: Context<'_>) -> Result<(), Error> {
                 .await?;
             Ok(())
         }
-        Packet {
-            error: Some(err), ..
-        } => {
-            ctx.say(format!("error fetching activity! {:?}", err))
+        Packet { error, .. } => {
+            ctx.say(format!("error fetching activity! {:?}", error))
                 .await?;
-            Ok(())
-        }
-        _ => {
-            ctx.say("bruh failed to fetch server activity").await?;
             Ok(())
         }
     }
@@ -550,14 +550,84 @@ fn create_activity_chart(data: &[f64]) -> Result<Vec<u8>, Error> {
     Ok(png_bytes)
 }
 
-// #[poise::command(prefix_command, slash_command)]
-// async fn leaderboard(ctx: Context<'_>) -> Result<(), Error> {
-//     let client = &InMemoryReqwestClient::default();
-//     let tetrio_leaderboard = client.fetch_leaderboard(LeaderboardType::League, query, session_id)
-// }
+/// Returns an embed of the Top 20 players in TETRA League
+#[poise::command(prefix_command, slash_command)]
+async fn leaderboard(ctx: Context<'_>) -> Result<(), Error> {
+    let client = &InMemoryReqwestClient::default();
+    let tetrio_leaderboard = client
+        .fetch_leaderboard(
+            LeaderboardType::League,
+            ValueBoundQuery::NotBound {
+                limit: None,
+                country: None,
+            },
+            None,
+        )
+        .await?;
+
+    match tetrio_leaderboard {
+        Packet {
+            data: Some(data), ..
+        } => {
+            // Build an embed with the top N entries
+            let mut embed = serenity::CreateEmbed::default()
+                .title("tetrio leaderboard")
+                .color(serenity::colours::branding::GREEN);
+
+            for (i, entry) in data.entries.iter().enumerate().take(20) {
+                embed = embed.field(
+                    format!("#{} {}", i + 1, entry.username),
+                    format!(
+                        "tr: {:.2} | rank: {} | country: {}",
+                        entry.league.tr,
+                        rank_label(entry.league.rank.as_ref()),
+                        entry.country.clone().unwrap_or_else(|| "??".into())
+                    ),
+                    false,
+                );
+            }
+
+            ctx.send(poise::CreateReply::default().embed(embed)).await?;
+            return Ok(());
+        }
+        Packet { error, .. } => {
+            ctx.say(format!("error fetching leaderboard! {:?}", error))
+                .await?;
+            return Ok(());
+        }
+    }
+}
+
+fn rank_label(rank: Option<&UserRank>) -> &'static str {
+    match rank {
+        Some(UserRank::XPlus) => "X+",
+        Some(UserRank::X) => "X",
+        Some(UserRank::U) => "U",
+        Some(UserRank::SS) => "SS",
+        Some(UserRank::SPlus) => "S+",
+        Some(UserRank::S) => "S",
+        Some(UserRank::SMinus) => "S-",
+        Some(UserRank::APlus) => "A+",
+        Some(UserRank::A) => "A",
+        Some(UserRank::AMinus) => "A-",
+        Some(UserRank::BPlus) => "B+",
+        Some(UserRank::B) => "B",
+        Some(UserRank::BMinus) => "B-",
+        Some(UserRank::CPlus) => "C+",
+        Some(UserRank::C) => "C",
+        Some(UserRank::CMinus) => "C-",
+        Some(UserRank::DPlus) => "D+",
+        Some(UserRank::D) => "D",
+        Some(UserRank::Z) => "Unranked",
+        Some(UserRank::Unknown(_)) => "???",
+        #[allow(non_snake_case)] // needed cuz uhh None ISN'T a variable
+        None => "???",
+    }
+}
 
 #[tokio::main]
 async fn main() {
+    dotenvy::dotenv().ok();
     let token = std::env::var("DISCORD_TOKEN").expect("missing DISCORD_TOKEN");
     trace!("got discord token");
     let intents =
