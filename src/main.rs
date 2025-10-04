@@ -17,7 +17,6 @@
 use chrono::{DateTime, Utc};
 use image::GenericImageView;
 use image::{DynamicImage, ImageBuffer, ImageFormat, Rgb, imageops};
-use mlua::Value;
 use plotters::prelude::*;
 use plotters::style::full_palette::ORANGE;
 use poise::samples::HelpConfiguration;
