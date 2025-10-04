@@ -12,7 +12,7 @@
       perSystem = { config, self', pkgs, lib, system, ... }:
         let
           runtimeDeps = with pkgs; [ openssl ];
-          buildDeps = with pkgs; [ pkg-config rustPlatform.bindgenHook font-config ];
+          buildDeps = with pkgs; [ pkg-config rustPlatform.bindgenHook fontconfig ];
           devDeps = with pkgs; [ gdb ];
 
           cargoToml = builtins.fromTOML (builtins.readFile ./Cargo.toml);
