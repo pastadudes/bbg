@@ -23,6 +23,8 @@ use poise::samples::HelpConfiguration;
 use poise::serenity_prelude as serenity;
 use rand::prelude::*;
 use reqwest::blocking::get;
+use serde::Deserialize;
+// use serde_json::{Deserializer, Serializer};
 use serenity::model::colour::Color;
 use std::f64::consts::PI;
 use std::io::Cursor;
@@ -367,6 +369,9 @@ async fn imageop(
     }
 }
 
+/// shows the source code of this bot, required by the bbg
+/// if a fork of my bot doesn't include this pls contact me
+/// @pastaya or contact@pastaya.net
 #[poise::command(prefix_command, slash_command)]
 async fn source(ctx: Context<'_>) -> Result<(), Error> {
     // ehh this doesn't need error handling
@@ -549,7 +554,7 @@ fn create_activity_chart(data: &[f64]) -> Result<Vec<u8>, Error> {
     Ok(png_bytes)
 }
 
-/// Returns an embed of the Top 20 players in TETRA League
+/// returns an embed of the top 20 players in tetra league
 #[poise::command(prefix_command, slash_command)]
 async fn leaderboard(ctx: Context<'_>) -> Result<(), Error> {
     let client = &InMemoryReqwestClient::default();
@@ -624,6 +629,93 @@ fn rank_label(rank: Option<&UserRank>) -> &'static str {
     }
 }
 
+#[derive(Deserialize, Debug)]
+struct Jobs {
+    company_name: String,
+    title: String,
+    description: String,
+    remote: bool,
+    tags: Vec<String>,
+    url: String,
+    job_types: Vec<String>,
+    location: String,
+    created_at: u64,
+}
+
+// needed cuz there are multiple fields in the api response
+#[derive(Deserialize, Debug)]
+struct ApiResponse {
+    data: Vec<Jobs>,
+}
+
+async fn create_job_embed() -> Result<serenity::CreateEmbed, Error> {
+    use nanohtml2text::html2text;
+    use reqwest::ClientBuilder;
+
+    let client = ClientBuilder::new()
+        .user_agent("contact@pastaya.net if im being too spammy")
+        .build()?;
+
+    let response = client
+        .get("https://arbeitnow.com/api/job-board-api")
+        .send()
+        .await?;
+    let response = response.error_for_status()?;
+    let data: ApiResponse = response.json().await?;
+
+    let mut description = String::new();
+
+    for (i, job) in data.data.iter().take(5).enumerate() {
+        let description_text = html2text(&job.description);
+        let truncated_desc = if description_text.chars().count() > 150 {
+            format!(
+                "{}...",
+                &description_text.chars().take(150).collect::<String>()
+            )
+        } else {
+            description_text
+        };
+
+        description.push_str(&format!(
+            "**{}. {}**\n\
+             **company**: {}\n\
+             **location**: {}\n\
+             **description**: {}\n\
+             **remote**: {}\n\
+             **tags**: {}\n\
+             **job types**: {}\n\
+             **posted**: <t:{}:R>\n\
+             [view job]({})\n\n",
+            i + 1,
+            job.title,
+            job.company_name,
+            job.location,
+            truncated_desc,
+            if job.remote { "yes" } else { "no" },
+            job.tags.join(", "),
+            job.job_types.join(", "),
+            job.created_at,
+            job.url
+        ));
+    }
+
+    let embed = serenity::CreateEmbed::default()
+        .title("latest jobs (top 5)")
+        .description(description)
+        .color(serenity::colours::branding::WHITE);
+
+    Ok(embed)
+}
+
+/// shows 5 job listings from arbeitnow.com
+#[poise::command(slash_command, prefix_command)]
+async fn jobs(ctx: Context<'_>) -> Result<(), Error> {
+    let embed = create_job_embed().await?;
+    let builder = poise::CreateReply::default().embed(embed).reply(true);
+    ctx.send(builder).await?;
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() {
     dotenvy::dotenv().ok();
@@ -648,6 +740,7 @@ async fn main() {
                 imageop(),
                 ipv4(),
                 tetrio(),
+                jobs(),
             ],
             prefix_options: poise::PrefixFrameworkOptions {
                 prefix: Some("-".into()),
