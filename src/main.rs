@@ -369,9 +369,9 @@ async fn imageop(
     }
 }
 
-/// shows the source code of this bot, required by the bbg
-/// if a fork of my bot doesn't include this pls contact me
-/// @pastaya or contact@pastaya.net
+/// required by the agpl  
+/// if a fork of my bot doesn't include this pls contact me  
+/// @pastaya
 #[poise::command(prefix_command, slash_command)]
 async fn source(ctx: Context<'_>) -> Result<(), Error> {
     // ehh this doesn't need error handling
