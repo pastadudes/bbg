@@ -167,15 +167,32 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
-name = "bbg"
-version = "1.0.0"
+name = "bbg-bot"
+version = "2.0.0"
 dependencies = [
+ "bbg-core",
  "chrono",
  "dotenvy",
  "image 0.25.8",
  "nanohtml2text",
  "plotters",
  "poise",
+ "rand 0.9.2",
+ "reqwest 0.12.23",
+ "serde",
+ "serenity",
+ "tetrio-api",
+ "tokio",
+]
+
+[[package]]
+name = "bbg-core"
+version = "2.0.0"
+dependencies = [
+ "chrono",
+ "image 0.25.8",
+ "nanohtml2text",
+ "plotters",
  "rand 0.9.2",
  "reqwest 0.12.23",
  "serde",

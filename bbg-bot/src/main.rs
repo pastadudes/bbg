@@ -14,8 +14,8 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+use bbg_core::{calculate_tetrio_level, get_avatar_color};
 use chrono::{DateTime, Utc};
-use image::GenericImageView;
 use image::{DynamicImage, ImageBuffer, ImageFormat, Rgb, imageops};
 use plotters::prelude::*;
 use plotters::style::full_palette::ORANGE;
@@ -214,36 +214,6 @@ async fn user(
     Ok(())
 }
 
-// thia function was brought to you by chatgpt
-// i mean it works? thankfully no need to read docs lol (bad for me no lie)
-async fn get_avatar_color(url: &str) -> Result<Color, Error> {
-    let img_bytes = &reqwest::get(url).await?.bytes().await?;
-
-    let img = image::load_from_memory(&img_bytes)?;
-    let (width, height) = img.dimensions();
-    let mut r = 0u64;
-    let mut g = 0u64;
-    let mut b = 0u64;
-
-    // go through the pixels and calculate average color
-    for x in 0..width {
-        for y in 0..height {
-            let pixel = img.get_pixel(x, y).0; // Get pixel (R, G, B, A)
-            r += pixel[0] as u64;
-            g += pixel[1] as u64;
-            b += pixel[2] as u64;
-        }
-    }
-
-    // calculate the average
-    let num_pixels = (width * height) as u64;
-    r /= num_pixels;
-    g /= num_pixels;
-    b /= num_pixels;
-
-    Ok(Color::from_rgb(r as u8, g as u8, b as u8))
-}
-
 /// calls saul
 #[poise::command(slash_command, prefix_command)]
 async fn call(ctx: Context<'_>) -> Result<(), Error> {
@@ -408,12 +378,6 @@ async fn ipv4(ctx: Context<'_>) -> Result<(), Error> {
 async fn tetrio(ctx: Context<'_>) -> Result<(), Error> {
     ctx.reply("you forgot the subcommand...").await?;
     Ok(())
-}
-
-fn calculate_tetrio_level(xp: f64) -> f64 {
-    let xp =
-        (xp / 500.0).powf(0.6) + (xp / (5000.0 + f64::max(0.0, xp - 4000000.0) / 5000.0)) + 1.0;
-    xp.trunc()
 }
 
 #[poise::command(prefix_command, slash_command, rename = "user")]
@@ -673,7 +637,7 @@ async fn create_job_embed() -> Result<serenity::CreateEmbed, Error> {
              **remote**: {}\n\
              **tags**: {}\n\
              **job types**: {}\n\
-             **posted**: <t:{}:R>\n\
+             **posted** <t:{}:R>\n\
              [view job]({})\n\n",
             i + 1,
             job.title,
@@ -697,7 +661,7 @@ async fn create_job_embed() -> Result<serenity::CreateEmbed, Error> {
 }
 
 /// shows 5 job listings from arbeitnow.com
-#[poise::command(slash_command, prefix_command)]
+#[poise::command(slash_command, prefix_command, aliases("j*bs"))]
 async fn jobs(ctx: Context<'_>) -> Result<(), Error> {
     let embed = create_job_embed().await?;
     let builder = poise::CreateReply::default().embed(embed).reply(true);
