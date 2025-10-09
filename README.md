@@ -1,4 +1,7 @@
-# BBG CELEBRATES 1.0 RELEASE!!
+# HEY! I'M REFACTORING! THIS BRANCH IS NOW OLD!
+
+
+## BBG CELEBRATES 1.0 RELEASE!!
 I never thought this bot would actually still be maintained after a week lol
 anyways there are 14 commands as of 1.0
 

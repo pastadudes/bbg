@@ -22,7 +22,6 @@ use plotters::style::full_palette::ORANGE;
 use poise::samples::HelpConfiguration;
 use poise::serenity_prelude as serenity;
 use rand::prelude::*;
-use reqwest::blocking::get;
 use serde::Deserialize;
 // use serde_json::{Deserializer, Serializer};
 use serenity::model::colour::Color;
@@ -33,7 +32,6 @@ use tetrio_api::http::parameters::value_bound_query::*;
 use tetrio_api::models::users::user_rank::UserRank;
 use tetrio_api::{http::clients::reqwest_client::InMemoryReqwestClient, models::packet::Packet};
 use tokio::time::{Duration, Instant, sleep_until};
-use tracing::{error, info, trace, warn};
 
 struct Data {
     start_time: Instant,
@@ -57,11 +55,9 @@ type Context<'a> = poise::Context<'a, Data, Error>;
 #[poise::command(slash_command, prefix_command)]
 async fn pi(ctx: Context<'_>) -> Result<(), Error> {
     let mut pi_string = format!("{:.15}", PI); // get Pi to 15 decimal places
-    trace!("got pi to 15 numbers");
 
     // VERY SMALL CHANCE to mess up a digit
     if rand::rng().random_bool(0.000000001454) {
-        info!("yo mutated pi just happened");
         let digits: Vec<char> = pi_string.chars().collect();
         let mut rng = rand::rng();
 
@@ -74,9 +70,7 @@ async fn pi(ctx: Context<'_>) -> Result<(), Error> {
         pi_string = new_pi_string.iter().collect();
     }
 
-    if let Err(e) = ctx.reply(format!("pi is: {}", pi_string)).await {
-        error!("HEY!!! pi() didn't respond {}", e);
-    }
+    ctx.reply(format!("pi is: {}", pi_string)).await?;
     Ok(())
 }
 
@@ -100,7 +94,8 @@ async fn avatar(
         .avatar_url()
         .unwrap_or_else(|| user.default_avatar_url());
 
-    let embed_color = tokio::task::block_in_place(|| get_avatar_color(&avatar_url))
+    let embed_color = get_avatar_color(&avatar_url)
+        .await
         .unwrap_or(serenity::Color::default());
     // build the embed
     let embed = serenity::CreateEmbed::new()
@@ -109,9 +104,7 @@ async fn avatar(
         .image(avatar_url);
 
     // send it
-    if let Err(e) = ctx.send(poise::CreateReply::default().embed(embed)).await {
-        error!("HEYY!!! avatar() DIDN'T RESPOND!! {}", e);
-    }
+    ctx.send(poise::CreateReply::default().embed(embed)).await?;
 
     Ok(())
 }
@@ -134,9 +127,7 @@ async fn age(
         u.name, datetime, timestamp
     );
 
-    if let Err(e) = ctx.reply(response).await {
-        error!("HEY!!! age() DIDN'T RESPOND!!!! {}", e);
-    }
+    ctx.reply(response).await?;
 
     Ok(())
 }
@@ -174,15 +165,11 @@ async fn uptime(ctx: Context<'_>) -> Result<(), Error> {
     let minutes = (elapsed.as_secs() % 3600) / 60;
     let seconds = elapsed.as_secs() % 60;
 
-    if let Err(e) = ctx
-        .reply(format!(
-            "uptime: {:02}:{:02}:{:02}",
-            hours, minutes, seconds
-        ))
-        .await
-    {
-        error!("HEY!!! uptime() DIDN'T RESPOND!! {}", e);
-    }
+    ctx.reply(format!(
+        "uptime: {:02}:{:02}:{:02}",
+        hours, minutes, seconds
+    ))
+    .await?;
     Ok(())
 }
 
@@ -192,37 +179,45 @@ async fn user(
     ctx: Context<'_>,
     #[description = "User mention"] user: Option<serenity::User>,
 ) -> Result<(), Error> {
-    let u = user.unwrap_or_else(|| ctx.author().clone());
+    let user = user.unwrap_or_else(|| ctx.author().clone());
 
-    let avatar_url = u.avatar_url().unwrap_or_else(|| u.default_avatar_url());
+    let avatar_url = user
+        .avatar_url()
+        .unwrap_or_else(|| user.default_avatar_url());
 
     // HACK: i mean it works and i think its the only way to get author icon url
-    let author = serenity::CreateEmbedAuthor::new(&u.name)
-        .icon_url(u.avatar_url().unwrap_or_else(|| u.default_avatar_url()));
+    let author = serenity::CreateEmbedAuthor::new(&user.name).icon_url(
+        user.avatar_url()
+            .unwrap_or_else(|| user.default_avatar_url()),
+    );
 
-    let embed_color =
-        tokio::task::block_in_place(|| get_avatar_color(&avatar_url)).unwrap_or(Color::default());
+    let embed_color = get_avatar_color(&avatar_url)
+        .await
+        .unwrap_or(Color::default());
     let embed = serenity::CreateEmbed::new()
-        // .author(|a: &mut serenity::CreateEmbedAuthor| a.name(&u.name).icon_url(avatar_url))
+        // .author(|a: &mut serenity::CreateEmbedAuthor| a.name(&user.name).icon_url(avatar_url))
         .author(author)
         .color(embed_color)
-        .thumbnail(u.avatar_url().unwrap_or_else(|| u.default_avatar_url()))
+        .thumbnail(
+            user.avatar_url()
+                .unwrap_or_else(|| user.default_avatar_url()),
+        )
         .field(
             "user info",
-            format!("id: {}\nusername: @{}", u.id, u.name),
+            format!("id: {}\nusername: @{}", user.id, user.name),
             false,
         );
 
-    if let Err(e) = ctx.send(poise::CreateReply::default().embed(embed)).await {
-        error!("HEYY!! user() DIDNT RESPOND!! {}", e);
-    }
+    ctx.send(poise::CreateReply::default().embed(embed).reply(true))
+        .await?;
+
     Ok(())
 }
 
 // thia function was brought to you by chatgpt
 // i mean it works? thankfully no need to read docs lol (bad for me no lie)
-fn get_avatar_color(url: &str) -> Result<Color, Box<dyn std::error::Error>> {
-    let img_bytes = get(url)?.bytes()?;
+async fn get_avatar_color(url: &str) -> Result<Color, Error> {
+    let img_bytes = &reqwest::get(url).await?.bytes().await?;
 
     let img = image::load_from_memory(&img_bytes)?;
     let (width, height) = img.dimensions();
@@ -288,20 +283,20 @@ async fn ping(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
-pub fn process_image(
+async fn process_image(
     url: &str,
     blur: Option<f32>,
     orientation: Option<ImageOrientation>,
     grayscale: Option<bool>,
 ) -> Result<DynamicImage, Error> {
-    let img_bytes = get(url)?.bytes()?;
-    let mut img = image::load_from_memory(&img_bytes)?;
+    let image_bytes = reqwest::get(url).await?.bytes().await?;
+    let mut loaded_image = image::load_from_memory(&image_bytes)?;
 
     // flip (probably)
     if let Some(orientation) = orientation {
         match orientation {
-            ImageOrientation::Horizontal => imageops::flip_horizontal_in_place(&mut img),
-            ImageOrientation::Vertical => imageops::flip_vertical_in_place(&mut img),
+            ImageOrientation::Horizontal => imageops::flip_horizontal_in_place(&mut loaded_image),
+            ImageOrientation::Vertical => imageops::flip_vertical_in_place(&mut loaded_image),
         }
     }
 
@@ -309,32 +304,32 @@ pub fn process_image(
     if let Some(blur_value) = blur {
         let max_blur = 1000.0;
         let blur_amount = blur_value.min(max_blur);
-        img = img.fast_blur(blur_amount);
+        loaded_image = loaded_image.fast_blur(blur_amount);
     }
 
     #[allow(unused_variables)]
     if let Some(true) = grayscale {
-        img = img.grayscale();
+        loaded_image = loaded_image.grayscale();
     }
 
-    Ok(img)
+    Ok(loaded_image)
 }
 
 /// Perform operations on an image.
 #[poise::command(slash_command, prefix_command)]
 async fn imageop(
-    ctx: poise::Context<'_, Data, Error>,
-    #[description = "The image to process"] img: serenity::Attachment,
-    #[description = "The blur amount (optional)"] blur: Option<f32>,
-    #[description = "The flip direction (optional)"] orientation: Option<ImageOrientation>, // Horizontal or Vertical
-    #[description = "Set to true for grayscale"] grayscale: Option<bool>,
+    ctx: Context<'_>,
+    #[description = "the image to process"] img: serenity::Attachment,
+    #[description = "the blur amount (optional)"] blur: Option<f32>,
+    #[description = "the flip direction (optional)"] orientation: Option<ImageOrientation>, // Horizontal or Vertical
+    #[description = "set to true for grayscale"] grayscale: Option<bool>,
 ) -> Result<(), Error> {
     // check if the file is an image.
     if !img
         .content_type
         .as_ref()
         // FIX: use is_some_and
-        .map_or(false, |ct| ct.starts_with("image/"))
+        .is_some_and(|ct| ct.starts_with("image/"))
     {
         ctx.say("please provide a valid image file!").await?;
         return Ok(());
@@ -345,13 +340,11 @@ async fn imageop(
         return Ok(());
     }
 
-    let url = img.url.clone();
+    let url = img.url;
     // Here we call our existing image processing function
-    let result =
-        tokio::task::spawn_blocking(move || process_image(&url, blur, orientation, grayscale))
-            .await?;
+    let result = process_image(&url, blur, orientation, grayscale);
 
-    match result {
+    match result.await {
         Ok(finished_img) => {
             // prepare for lots of uhhhh something
             let mut img_data: Vec<u8> = Vec::new();
@@ -426,10 +419,7 @@ fn calculate_tetrio_level(xp: f64) -> f64 {
 #[poise::command(prefix_command, slash_command, rename = "user")]
 async fn tetrio_user(ctx: Context<'_>, username: String) -> Result<(), Error> {
     let client = InMemoryReqwestClient::default();
-    let user = client
-        .fetch_user_info(&username)
-        .await
-        .expect("maybe this crate is a bit too old?");
+    let user = client.fetch_user_info(&username).await?;
     match &user {
         Packet {
             data: Some(data), ..
@@ -624,7 +614,6 @@ fn rank_label(rank: Option<&UserRank>) -> &'static str {
         Some(UserRank::D) => "D",
         Some(UserRank::Z) => "Unranked",
         Some(UserRank::Unknown(_)) => "???",
-        #[allow(non_snake_case)] // needed cuz uhh None ISN'T a variable
         None => "???",
     }
 }
@@ -644,7 +633,7 @@ struct Jobs {
 
 // needed cuz there are multiple fields in the api response
 #[derive(Deserialize, Debug)]
-struct ApiResponse {
+struct JobListings {
     data: Vec<Jobs>,
 }
 
@@ -661,7 +650,7 @@ async fn create_job_embed() -> Result<serenity::CreateEmbed, Error> {
         .send()
         .await?;
     let response = response.error_for_status()?;
-    let data: ApiResponse = response.json().await?;
+    let data: JobListings = response.json().await?;
 
     let mut description = String::new();
 
@@ -720,7 +709,6 @@ async fn jobs(ctx: Context<'_>) -> Result<(), Error> {
 async fn main() {
     dotenvy::dotenv().ok();
     let token = std::env::var("DISCORD_TOKEN").expect("missing DISCORD_TOKEN");
-    trace!("got discord token");
     let intents =
         serenity::GatewayIntents::non_privileged() | serenity::GatewayIntents::MESSAGE_CONTENT;
 
@@ -746,8 +734,7 @@ async fn main() {
                 prefix: Some("-".into()),
                 ..Default::default()
             },
-            #[allow(unused_variables)]
-            event_handler: |ctx, event, framework, data| {
+            event_handler: |_ctx, _event, _framework, _data| {
                 Box::pin(async move {
                     // if let serenity::FullEvent::Message { new_message } = event {
                     //     if new_message.author.bot || new_message.content.starts_with("-") {
@@ -780,13 +767,8 @@ async fn main() {
             },
             ..Default::default()
         })
-        .setup(|ctx, _ready, framework| {
+        .setup(|_ctx, _ready, _framework| {
             Box::pin(async move {
-                if let Err(e) =
-                    poise::builtins::register_globally(ctx, &framework.options().commands).await
-                {
-                    warn!("FAILED to register global commands!!! {:?}", e);
-                }
                 // let swears = Data::load("swears.json").await?;
                 // Ok(Data {
                 //     swears: Arc::new(Mutex::new(swears)),
@@ -801,9 +783,9 @@ async fn main() {
     let mut client = serenity::ClientBuilder::new(token, intents)
         .framework(framework)
         .await
-        .expect("Error creating client");
+        .expect("error creating client");
 
     if let Err(why) = client.start().await {
-        error!("kablam! {:?}", why);
+        eprintln!("kablam! {:?}", why);
     }
 }

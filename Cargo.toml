@@ -1,6 +1,6 @@
 [package]
 name = "bbg"
-version = "1.0.0"
+version = "1.1.0"
 edition = "2024"
 description = "mostly a shitpost of functions i created that MAY or MAY not return completely wrong values (check pi())"
 license = "AGPL-3.0-or-later"                                                                                            # finally fixed the license
@@ -13,10 +13,9 @@ nanohtml2text = "0.2.1"
 plotters = "0.3.7"
 poise = "0.6.1"
 rand = "0.9.2"
-reqwest = { version = "0.12.23", features = ["blocking"] }
+reqwest = "0.12.23"
 serde = "1.0.228"
-serde_json = "1.0.145"
+# serde_json = "1.0.145"
 serenity = "0.12"
 tetrio-api = "0.6.0"
 tokio = { version = "1.21.2", features = ["macros", "rt-multi-thread"] }
-tracing = "0.1.41"
