@@ -6,10 +6,10 @@ members = [
 ]
 
 # [package]
+# description = "a discord bot (and library crate that can work without discord) that has the most random features but i mean its cool"
 # name = "bbg"
-# version = "2.0.0"
+# version = "3.1.0"
 # edition = "2024"
-# description = "mostly a shitpost of functions i created that MAY or MAY not return completely wrong values (check pi())"
 # license = "AGPL-3.0-or-later"
 
 # [dependencies]

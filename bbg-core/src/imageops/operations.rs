@@ -88,7 +88,7 @@ impl ImageProcessor {
     }
 
     /// Call to process the image
-    /// Returns raw bytes (in Vec<u8>)  
+    /// Returns raw bytes (in `Vec<u8>`)  
     /// Like this:  
     /// ```
     ///    let result = ImageProcessor::new(url)

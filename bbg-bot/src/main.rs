@@ -14,6 +14,7 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+use bbg_core::tetrio::tetrio::{TetrioActivity, TetrioUser};
 use bbg_core::{AverageColor, imageops::*};
 use chrono::{DateTime, Utc};
 use image::{ImageBuffer, ImageFormat, Rgb};
@@ -302,7 +303,8 @@ async fn ipv4(ctx: Context<'_>) -> Result<(), Error> {
         // "stats",
         "activity",
         "leaderboard"
-    )
+    ),
+    aliases("pentrio")
 )]
 async fn tetrio(ctx: Context<'_>) -> Result<(), Error> {
     ctx.reply("you forgot the subcommand...").await?;
@@ -311,130 +313,24 @@ async fn tetrio(ctx: Context<'_>) -> Result<(), Error> {
 
 #[poise::command(prefix_command, slash_command, rename = "user")]
 async fn tetrio_user(ctx: Context<'_>, username: String) -> Result<(), Error> {
-    let client = InMemoryReqwestClient::default();
-    let user = client.fetch_user_info(&username).await?;
-    match &user {
-        Packet {
-            data: Some(data), ..
-        } => {
-            let embed_author = serenity::CreateEmbedAuthor::new(&data.username);
-            let direct_xp = &data.xp;
-            let mut xp = direct_xp.to_string();
-            xp.push_str(" XP");
-
-            let tetrio_info = serenity::CreateEmbed::new()
-                .author(embed_author)
-                .color(serenity::colours::branding::BLURPLE)
-                .field("tetrio user id:", &data.id, false)
-                .field("xp:", xp, false)
-                .field(
-                    "level:",
-                    bbg_core::calculate_tetrio_level(*direct_xp).to_string(),
-                    true,
-                )
-                .field("role", format!("{:?}", &data.role), false);
-            ctx.send(poise::CreateReply::default().embed(tetrio_info))
-                .await?;
-            Ok(())
-        }
-        Packet { error, .. } => {
-            eprintln!(
-                "an error has occured while trying to fetch the user! {:?}",
-                error
-            );
-            Ok(())
-        }
-    }
+    let embed = TetrioUser::fetch(&username).await?.to_embed();
+    ctx.send(poise::CreateReply::default().embed(embed).reply(true))
+        .await?;
+    Ok(())
 }
 
 /// Shows general activity of tetrio
 #[poise::command(slash_command, prefix_command, broadcast_typing)]
 async fn activity(ctx: Context<'_>) -> Result<(), Error> {
-    let client = InMemoryReqwestClient::default();
-
-    let server_activity = client
-        .fetch_general_activity()
-        .await
-        .map_err(|e| format!("failed to fetch activity ;( {}", e))?;
-
-    match server_activity {
-        Packet {
-            data: Some(data), ..
-        } => {
-            let activity_f64: Vec<f64> = data.activity.iter().map(|&x| x as f64).collect();
-
-            // create the chart in a blocking task
-            let chart_data =
-                tokio::task::spawn_blocking(move || create_activity_chart(&activity_f64))
-                    .await
-                    .map_err(|e| format!("task failed: {}", e))?
-                    .map_err(|e| format!("graph creation failed: {}", e))?;
-
-            let attachment = serenity::CreateAttachment::bytes(chart_data, "activity.png");
-            ctx.send(poise::CreateReply::default().attachment(attachment))
-                .await?;
-            Ok(())
-        }
-        Packet { error, .. } => {
-            ctx.say(format!("error fetching activity! {:?}", error))
-                .await?;
-            Ok(())
-        }
-    }
-}
-
-fn create_activity_chart(data: &[f64]) -> Result<Vec<u8>, Error> {
-    const W: u32 = 800;
-    const H: u32 = 400;
-    const BYTES_PER_PIXEL: usize = 3;
-
-    // 1. raw RGB buffer (plotters wants &mut [u8])
-    let mut raw = vec![0u8; (W * H) as usize * BYTES_PER_PIXEL];
-
-    {
-        // 2. draw into that raw buffer (probably)
-        let root = BitMapBackend::with_buffer(&mut raw, (W, H)).into_drawing_area();
-        root.fill(&WHITE)?;
-
-        let (min_val, max_val) = match (
-            data.iter().cloned().reduce(f64::min),
-            data.iter().cloned().reduce(f64::max),
-        ) {
-            (Some(min), Some(max)) => (min, max),
-            _ => return Err("no data".into()),
-        };
-        let pad = (max_val - min_val) * 0.1;
-        let y_min = (min_val - pad).max(0.0);
-        let y_max = max_val + pad;
-
-        let mut chart = ChartBuilder::on(&root)
-            .caption("tetrio server activity", ("sans-serif", 25))
-            .margin(20)
-            .x_label_area_size(40)
-            .y_label_area_size(50)
-            .build_cartesian_2d(0f64..data.len() as f64, y_min..y_max)?;
-
-        chart
-            .configure_mesh()
-            .x_desc("time")
-            .y_desc("players")
-            .draw()?;
-
-        chart.draw_series(LineSeries::new(
-            data.iter().enumerate().map(|(i, &v)| (i as f64, v)),
-            &ORANGE,
-        ))?;
-
-        root.present()?;
-    }
-
-    // 3. wrap raw rgb bytes in an `RgbImage` and encode to png
-    let rgb_img: ImageBuffer<Rgb<u8>, _> =
-        ImageBuffer::from_raw(W, H, raw).ok_or("buffer size mismatch")?;
-    let mut png_bytes = Vec::new();
-    rgb_img.write_to(&mut Cursor::new(&mut png_bytes), ImageFormat::Png)?;
-
-    Ok(png_bytes)
+    let attachment = TetrioActivity::fetch().await?.create_chart()?;
+    ctx.send(
+        poise::CreateReply::default().attachment(serenity::CreateAttachment::bytes(
+            attachment,
+            "tetrio_activity.png",
+        )),
+    )
+    .await?;
+    Ok(())
 }
 
 /// returns an embed of the top 20 players in tetra league

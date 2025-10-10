@@ -1,5 +1,6 @@
 pub mod imageops;
 pub mod jobs;
+pub mod tetrio;
 
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
 #[derive(Debug, Clone, Copy)]
@@ -46,11 +47,6 @@ impl AverageColor {
 
         Ok(AverageColor::new(red as u8, green as u8, blue as u8))
     }
-}
-pub fn calculate_tetrio_level(xp: f64) -> f64 {
-    let xp =
-        (xp / 500.0).powf(0.6) + (xp / (5000.0 + f64::max(0.0, xp - 4000000.0) / 5000.0)) + 1.0;
-    xp.trunc()
 }
 
 pub async fn pi() -> String {
