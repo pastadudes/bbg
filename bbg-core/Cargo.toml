@@ -1,6 +1,6 @@
 [package]
 name = "bbg-core"
-version = "2.1.0" # make sure to follow semver!
+version = "3.0.0" # make sure to follow semver!
 edition = "2024"
 description = "function shitpost (thats mean't to be used with bbg-bot)"
 license = "AGPL-3.0-or-later"
