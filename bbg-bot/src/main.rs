@@ -14,18 +14,13 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-use bbg_core::{calculate_tetrio_level, get_avatar_color};
+use bbg_core::{AverageColor, imageops::*};
 use chrono::{DateTime, Utc};
-use image::{DynamicImage, ImageBuffer, ImageFormat, Rgb, imageops};
+use image::{ImageBuffer, ImageFormat, Rgb};
 use plotters::prelude::*;
 use plotters::style::full_palette::ORANGE;
 use poise::samples::HelpConfiguration;
 use poise::serenity_prelude as serenity;
-use rand::prelude::*;
-use serde::Deserialize;
-// use serde_json::{Deserializer, Serializer};
-use serenity::model::colour::Color;
-use std::f64::consts::PI;
 use std::io::Cursor;
 use tetrio_api::http::parameters::leaderboard_query::LeaderboardType;
 use tetrio_api::http::parameters::value_bound_query::*;
@@ -37,16 +32,6 @@ struct Data {
     start_time: Instant,
 }
 
-/// for use in flip_image()  
-/// basically technically practically defines 2 parameters
-#[derive(Debug, poise::ChoiceParameter)]
-pub enum ImageOrientation {
-    #[name = "horizontally"]
-    Horizontal,
-    #[name = "vertically"]
-    Vertical,
-}
-
 type Error = Box<dyn std::error::Error + Send + Sync>;
 type Context<'a> = poise::Context<'a, Data, Error>;
 
@@ -54,23 +39,9 @@ type Context<'a> = poise::Context<'a, Data, Error>;
 /// also watch out theres a 0.000000001454% chance of a mutated pi
 #[poise::command(slash_command, prefix_command)]
 async fn pi(ctx: Context<'_>) -> Result<(), Error> {
-    let mut pi_string = format!("{:.15}", PI); // get Pi to 15 decimal places
+    let pi = bbg_core::pi().await;
 
-    // VERY SMALL CHANCE to mess up a digit
-    if rand::rng().random_bool(0.000000001454) {
-        let digits: Vec<char> = pi_string.chars().collect();
-        let mut rng = rand::rng();
-
-        // pick a random index after the decimal point (skip '3' and '.')
-        let idx = rng.random_range(2..digits.len());
-        let new_digit = rng.random_range(0..10).to_string().chars().next().unwrap();
-
-        let mut new_pi_string = digits.clone();
-        new_pi_string[idx] = new_digit;
-        pi_string = new_pi_string.iter().collect();
-    }
-
-    ctx.reply(format!("pi is: {}", pi_string)).await?;
+    ctx.reply(format!("pi is: {pi}")).await?;
     Ok(())
 }
 
@@ -94,9 +65,9 @@ async fn avatar(
         .avatar_url()
         .unwrap_or_else(|| user.default_avatar_url());
 
-    let embed_color = get_avatar_color(&avatar_url)
-        .await
-        .unwrap_or(serenity::Color::default());
+    let embed_color = AverageColor::from_image_url(&avatar_url)
+        .await?
+        .to_embed_color();
     // build the embed
     let embed = serenity::CreateEmbed::new()
         .title(format!("{}'s avatar", user.name))
@@ -148,10 +119,10 @@ async fn help(ctx: Context<'_>, command: Option<String>) -> Result<(), Error> {
         include_description: true,
         show_context_menu_commands: true,
         show_subcommands: true,
-        __non_exhaustive: (), // Poise devs why tf do we need this??? you even hid it in docs...
         extra_text_at_bottom: "\
             Type -help `command` for more help on a specifc command.
             This command also tracks edits!",
+        ..Default::default()
     };
     poise::builtins::help(ctx, command.as_deref(), config).await?;
     Ok(())
@@ -191,9 +162,9 @@ async fn user(
             .unwrap_or_else(|| user.default_avatar_url()),
     );
 
-    let embed_color = get_avatar_color(&avatar_url)
-        .await
-        .unwrap_or(Color::default());
+    let embed_color = AverageColor::from_image_url(&avatar_url)
+        .await?
+        .to_embed_color();
     let embed = serenity::CreateEmbed::new()
         // .author(|a: &mut serenity::CreateEmbedAuthor| a.name(&user.name).icon_url(avatar_url))
         .author(author)
@@ -253,38 +224,6 @@ async fn ping(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
-async fn process_image(
-    url: &str,
-    blur: Option<f32>,
-    orientation: Option<ImageOrientation>,
-    grayscale: Option<bool>,
-) -> Result<DynamicImage, Error> {
-    let image_bytes = reqwest::get(url).await?.bytes().await?;
-    let mut loaded_image = image::load_from_memory(&image_bytes)?;
-
-    // flip (probably)
-    if let Some(orientation) = orientation {
-        match orientation {
-            ImageOrientation::Horizontal => imageops::flip_horizontal_in_place(&mut loaded_image),
-            ImageOrientation::Vertical => imageops::flip_vertical_in_place(&mut loaded_image),
-        }
-    }
-
-    // BLUR!!
-    if let Some(blur_value) = blur {
-        let max_blur = 1000.0;
-        let blur_amount = blur_value.min(max_blur);
-        loaded_image = loaded_image.fast_blur(blur_amount);
-    }
-
-    #[allow(unused_variables)]
-    if let Some(true) = grayscale {
-        loaded_image = loaded_image.grayscale();
-    }
-
-    Ok(loaded_image)
-}
-
 /// Perform operations on an image.
 #[poise::command(slash_command, prefix_command)]
 async fn imageop(
@@ -312,24 +251,21 @@ async fn imageop(
 
     let url = img.url;
     // Here we call our existing image processing function
-    let result = process_image(&url, blur, orientation, grayscale);
+    let result = ImageProcessor::new(url)
+        .blur(blur)
+        .flip(orientation)
+        .grayscale(grayscale)
+        .process()
+        .await?;
 
-    match result.await {
-        Ok(finished_img) => {
-            // prepare for lots of uhhhh something
-            let mut img_data: Vec<u8> = Vec::new();
-            finished_img.write_to(&mut Cursor::new(&mut img_data), image::ImageFormat::Png)?;
-            let reply = poise::CreateReply::default().attachment(
-                serenity::CreateAttachment::bytes(img_data, format!("new!!!_{}", img.filename)),
-            );
-            ctx.send(reply).await?;
-            Ok(())
-        }
-        Err(e) => {
-            ctx.say(format!("kaBOOMM! {}", e)).await?;
-            Err(e)
-        }
-    }
+    ctx.send(
+        poise::CreateReply::default().attachment(serenity::CreateAttachment::bytes(
+            result,
+            format!("new!!!_{}", img.filename),
+        )),
+    )
+    .await?;
+    Ok(())
 }
 
 /// required by the agpl  
@@ -345,14 +281,7 @@ async fn source(ctx: Context<'_>) -> Result<(), Error> {
 /// Get a random ip address
 #[poise::command(prefix_command, slash_command)]
 async fn ipv4(ctx: Context<'_>) -> Result<(), Error> {
-    let mut rng = rand::rngs::StdRng::from_os_rng();
-
-    let octet1: u8 = rng.random_range(0..=255);
-    let octet2: u8 = rng.random_range(0..=255);
-    let octet3: u8 = rng.random_range(0..=255);
-    let octet4: u8 = rng.random_range(0..=255);
-
-    let ip = format!("{}.{}.{}.{}", octet1, octet2, octet3, octet4);
+    let ip = bbg_core::get_random_ipv4().await;
 
     ctx.reply(format!(
         "heres a vaild ip address (may not be online): {}",
@@ -400,7 +329,7 @@ async fn tetrio_user(ctx: Context<'_>, username: String) -> Result<(), Error> {
                 .field("xp:", xp, false)
                 .field(
                     "level:",
-                    calculate_tetrio_level(*direct_xp).to_string(),
+                    bbg_core::calculate_tetrio_level(*direct_xp).to_string(),
                     true,
                 )
                 .field("role", format!("{:?}", &data.role), false);
@@ -582,82 +511,10 @@ fn rank_label(rank: Option<&UserRank>) -> &'static str {
     }
 }
 
-#[derive(Deserialize, Debug)]
-struct Jobs {
-    company_name: String,
-    title: String,
-    description: String,
-    remote: bool,
-    tags: Vec<String>,
-    url: String,
-    job_types: Vec<String>,
-    location: String,
-    created_at: u64,
-}
-
-// needed cuz there are multiple fields in the api response
-#[derive(Deserialize, Debug)]
-struct JobListings {
-    data: Vec<Jobs>,
-}
-
 async fn create_job_embed() -> Result<serenity::CreateEmbed, Error> {
-    use nanohtml2text::html2text;
-    use reqwest::ClientBuilder;
-
-    let client = ClientBuilder::new()
-        .user_agent("contact@pastaya.net if im being too spammy")
-        .build()?;
-
-    let response = client
-        .get("https://arbeitnow.com/api/job-board-api")
-        .send()
-        .await?;
-    let response = response.error_for_status()?;
-    let data: JobListings = response.json().await?;
-
-    let mut description = String::new();
-
-    for (i, job) in data.data.iter().take(5).enumerate() {
-        let description_text = html2text(&job.description);
-        let truncated_desc = if description_text.chars().count() > 150 {
-            format!(
-                "{}...",
-                &description_text.chars().take(150).collect::<String>()
-            )
-        } else {
-            description_text
-        };
-
-        description.push_str(&format!(
-            "**{}. {}**\n\
-             **company**: {}\n\
-             **location**: {}\n\
-             **description**: {}\n\
-             **remote**: {}\n\
-             **tags**: {}\n\
-             **job types**: {}\n\
-             **posted** <t:{}:R>\n\
-             [view job]({})\n\n",
-            i + 1,
-            job.title,
-            job.company_name,
-            job.location,
-            truncated_desc,
-            if job.remote { "yes" } else { "no" },
-            job.tags.join(", "),
-            job.job_types.join(", "),
-            job.created_at,
-            job.url
-        ));
-    }
-
-    let embed = serenity::CreateEmbed::default()
-        .title("latest jobs (top 5)")
-        .description(description)
-        .color(serenity::colours::branding::WHITE);
-
-    Ok(embed)
+    use bbg_core::jobs::JobListings;
+    let listings = JobListings::fetch().await?.take(5);
+    Ok(listings.to_embed())
 }
 
 /// shows 5 job listings from arbeitnow.com
