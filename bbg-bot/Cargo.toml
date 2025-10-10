@@ -1,6 +1,6 @@
 [package]
 name = "bbg-bot"
-version = "3.1.0"
+version = "3.1.1"
 edition = "2024"
 description = "the glue between bbg-core and discord"
 license = "AGPL-3.0-or-later"
@@ -8,11 +8,8 @@ license = "AGPL-3.0-or-later"
 [dependencies]
 chrono = "0.4.42"
 dotenvy = "0.15.7"
-image = "0.25.8"
-plotters = "0.3.7"
 poise = "0.6.1"
-reqwest = "0.12.23"
 serenity = "0.12"
 tetrio-api = "0.6.0"
 tokio = { version = "1.21.2", features = ["macros", "rt-multi-thread"] }
-bbg-core = { path = "../bbg-core" }
+bbg-core = { path = "../bbg-core", version = "*" } # we use any version since its synced with bbg-bot anyways

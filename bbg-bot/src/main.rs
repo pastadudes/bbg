@@ -17,12 +17,8 @@
 use bbg_core::tetrio::tetrio::{TetrioActivity, TetrioUser};
 use bbg_core::{AverageColor, imageops::*};
 use chrono::{DateTime, Utc};
-use image::{ImageBuffer, ImageFormat, Rgb};
-use plotters::prelude::*;
-use plotters::style::full_palette::ORANGE;
 use poise::samples::HelpConfiguration;
 use poise::serenity_prelude as serenity;
-use std::io::Cursor;
 use tetrio_api::http::parameters::leaderboard_query::LeaderboardType;
 use tetrio_api::http::parameters::value_bound_query::*;
 use tetrio_api::models::users::user_rank::UserRank;

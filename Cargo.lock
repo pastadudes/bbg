@@ -168,15 +168,12 @@ checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
 name = "bbg-bot"
-version = "3.1.0"
+version = "3.1.1"
 dependencies = [
  "bbg-core",
  "chrono",
  "dotenvy",
- "image 0.25.8",
- "plotters",
  "poise",
- "reqwest 0.12.23",
  "serenity",
  "tetrio-api",
  "tokio",
@@ -184,7 +181,7 @@ dependencies = [
 
 [[package]]
 name = "bbg-core"
-version = "3.1.0"
+version = "3.1.1"
 dependencies = [
  "chrono",
  "image 0.25.8",
