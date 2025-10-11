@@ -1,6 +1,6 @@
 [package]
 name = "cbg-core"
-version = "3.1.3" # make sure to follow semver!
+version = "3.2.0" # make sure to follow semver!
 edition = "2024"
 description = "function shitpost (thats mean't to be used with bbg-bot)"
 license = "AGPL-3.0-or-later"
@@ -17,6 +17,8 @@ serenity = { version = "0.12", optional = true }
 poise = { version = "0.6.1", optional = true }
 tetrio-api = "0.6.0"
 tokio = { version = "1.21.2", features = ["macros", "rt-multi-thread"] }
+rosu-v2 = "0.11.0"
+# moka = "0.12.11"
 
 [features]
 default = ["discord"]

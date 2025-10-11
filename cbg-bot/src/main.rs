@@ -23,13 +23,15 @@ use tetrio_api::http::parameters::value_bound_query::*;
 use tetrio_api::models::users::user_rank::UserRank;
 use tetrio_api::{http::clients::reqwest_client::InMemoryReqwestClient, models::packet::Packet};
 use tokio::time::{Duration, Instant, sleep_until};
+mod osu;
 
-struct Data {
+pub struct Data {
+    // who knows i might add more user data here
     start_time: Instant,
 }
 
-type Error = Box<dyn std::error::Error + Send + Sync>;
-type Context<'a> = poise::Context<'a, Data, Error>;
+pub type Error = Box<dyn std::error::Error + Send + Sync>;
+pub type Context<'a> = poise::Context<'a, Data, Error>;
 
 /// 15 decimal pi.  
 /// also watch out theres a 0.000000001454% chance of a mutated pi
@@ -444,6 +446,7 @@ async fn main() {
                 tetrio(),
                 jobs(),
                 invite(),
+                crate::osu::osu(),
             ],
             prefix_options: poise::PrefixFrameworkOptions {
                 prefix: Some("-".into()),

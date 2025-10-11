@@ -1,5 +1,6 @@
 pub mod imageops;
 pub mod jobs;
+pub mod osu;
 pub mod tetrio;
 
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
