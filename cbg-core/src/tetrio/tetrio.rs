@@ -6,15 +6,28 @@ use tetrio_api::{
 };
 use tokio::time::Instant;
 
+/// Abstraction over tetrio_api used for fetching user info.
+#[derive(Debug)]
 pub struct TetrioUser {
+    /// nah im not explaining ts
     pub username: String,
+    /// tetrio user id
     pub id: String,
+    /// tetrio user xp  
+    /// it's NOT truncated so it will be very long
     pub xp: f64,
+    /// user role (`String` is temp until i stop being lazy and make an enum)
     pub role: String,
+    /// league data
     pub league: Option<LeagueSummary>,
 }
 
 impl TetrioUser {
+    /// fetches user data  
+    /// Examples:
+    /// ```
+    ///  let embed = TetrioUser::fetch(&username).await?.to_embed(); // turns data into a discord embed
+    /// ```
     pub async fn fetch(username: &str) -> Result<Self, Error> {
         let client = InMemoryReqwestClient::default();
 
@@ -39,7 +52,7 @@ impl TetrioUser {
         let packet: Packet<LeagueSummary> = client
             .fetch_user_league_summaries(user_id)
             .await
-            .map_err(|e| format!("Failed to fetch league data: {}", e))?;
+            .map_err(|e| format!("failed to fetch league data!: {}", e))?;
 
         match packet {
             Packet {
@@ -48,9 +61,9 @@ impl TetrioUser {
             Packet { error, .. } => {
                 if let Some(err) = error {
                     // Convert tetrio_api error to string
-                    Err(format!("API error: {:?}", err).into())
+                    Err(format!("API error!: {:?}", err).into())
                 } else {
-                    Err("Unknown error fetching league data".into())
+                    Err("unknown error fetching league data!".into())
                 }
             }
         }
@@ -65,11 +78,11 @@ impl TetrioUser {
                 id: data.id,
                 xp: data.xp,
                 role: format!("{:?}", data.role),
-                league: None, // We'll fetch this separately
+                league: None, // we'll fetch this separately
             }),
             Packet { error, .. } => {
                 if let Some(err) = error {
-                    // Convert tetrio_api error to string
+                    // Convert tetrio_api error to string (so it compiles)
                     Err(format!("API error!: {:?}", err).into())
                 } else {
                     Err("unknown error from tetrio API!".into())
@@ -78,6 +91,8 @@ impl TetrioUser {
         }
     }
 
+    /// tetrio's special cursed formula for calculating levels...  
+    /// ![the tetrio formula equation](https://latex2image-output.s3.amazonaws.com/img-Gu74frYXEMDj.png)
     pub fn level(&self) -> f64 {
         let xp = self.xp;
         let level =
@@ -85,6 +100,19 @@ impl TetrioUser {
         level.trunc()
     }
 
+    /// turns data into a discord embed
+    /// only if discord feature is enabled
+    /// Examples:
+    /// ```
+    /// #[poise::command(prefix_command, slash_command, rename = "user")]
+    /// async fn tetrio_user(ctx: Context<'_>, username: String) -> Result<(), Error> {
+    /// // formatting is fucked ik
+    ///        let embed = TetrioUser::fetch(&username).await?.to_embed();
+    ///        ctx.send(poise::CreateReply::default().embed(embed).reply(true))
+    ///            .await?;
+    ///          Ok(())
+    /// }
+    /// ```
     #[cfg(feature = "discord")]
     pub fn to_embed(&self) -> serenity::all::CreateEmbed {
         let mut embed = serenity::all::CreateEmbed::new()

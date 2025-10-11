@@ -14,10 +14,9 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-use cbg_core::tetrio::tetrio::{TetrioActivity, TetrioUser};
+use cbg_core::tetrio::{TetrioActivity, TetrioUser};
 use cbg_core::{AverageColor, imageops::*};
 use chrono::{DateTime, Utc};
-use poise::samples::HelpConfiguration;
 use poise::serenity_prelude as serenity;
 use tetrio_api::http::parameters::leaderboard_query::LeaderboardType;
 use tetrio_api::http::parameters::value_bound_query::*;
@@ -111,14 +110,7 @@ async fn register(ctx: Context<'_>) -> Result<(), Error> {
 /// HELP!!! well uh it also tracks edits. you can use -help `command` to get more info about a command
 #[poise::command(slash_command, track_edits, prefix_command)]
 async fn help(ctx: Context<'_>, command: Option<String>) -> Result<(), Error> {
-    let config = HelpConfiguration {
-        ephemeral: false,
-        include_description: true,
-        show_context_menu_commands: true,
-        show_subcommands: true,
-        extra_text_at_bottom: "\
-            Type -help `command` for more help on a specifc command.
-            This command also tracks edits!",
+    let config = poise::builtins::HelpConfiguration {
         ..Default::default()
     };
     poise::builtins::help(ctx, command.as_deref(), config).await?;
