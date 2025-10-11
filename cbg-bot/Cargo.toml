@@ -1,8 +1,8 @@
 [package]
-name = "bbg-bot"
+name = "cbg-bot"
 version = "3.1.1"
 edition = "2024"
-description = "the glue between bbg-core and discord"
+description = "the glue between cbg-core and discord"
 license = "AGPL-3.0-or-later"
 
 [dependencies]
@@ -12,4 +12,4 @@ poise = "0.6.1"
 serenity = "0.12"
 tetrio-api = "0.6.0"
 tokio = { version = "1.21.2", features = ["macros", "rt-multi-thread"] }
-bbg-core = { path = "../bbg-core", version = "*" } # we use any version since its synced with bbg-bot anyways
+cbg-core = { path = "../cbg-core", version = "*" } # we use any version since its synced with bbg-bot anyways

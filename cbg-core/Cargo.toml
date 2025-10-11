@@ -1,5 +1,5 @@
 [package]
-name = "bbg-core"
+name = "cbg-core"
 version = "3.1.1" # make sure to follow semver!
 edition = "2024"
 description = "function shitpost (thats mean't to be used with bbg-bot)"

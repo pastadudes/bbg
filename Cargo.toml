@@ -1,16 +1,20 @@
 [workspace]
 resolver = "3"
 members = [
-  "bbg-bot",
-  "bbg-core",
+  "cbg-bot",
+  "cbg-core",
 ]
 
-# [package]
-# description = "a discord bot (and library crate that can work without discord) that has the most random features but i mean its cool"
-# name = "bbg"
-# version = "3.1.0"
-# edition = "2024"
-# license = "AGPL-3.0-or-later"
+[workspace.package]
+description = "a discord bot (and library crate that can work without discord) that has the most random features but i mean its cool"
+name = "cbg"
+keywords = ["discord", "discord-bot"]
+version = "3.1.1"
+edition = "2024"
+license = "AGPL-3.0-or-later"
+authors = ["pastaya"]
+documentation = "https://docs.rs/cbg" # maybe?
+homepage = "https://pastaya.net/cbg"
 
 # [dependencies]
 # chrono = "0.4.42"
