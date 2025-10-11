@@ -1,4 +1,4 @@
-// bbg, a discord bot (that does basic things)
+// cbg, a discord bot (that does basic things)
 // Copyright (C) 2025 pastaya
 //
 // This program is free software: you can redistribute it and/or modify
@@ -14,8 +14,8 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-use bbg_core::tetrio::tetrio::{TetrioActivity, TetrioUser};
-use bbg_core::{AverageColor, imageops::*};
+use cbg_core::tetrio::tetrio::{TetrioActivity, TetrioUser};
+use cbg_core::{AverageColor, imageops::*};
 use chrono::{DateTime, Utc};
 use poise::samples::HelpConfiguration;
 use poise::serenity_prelude as serenity;
@@ -36,7 +36,7 @@ type Context<'a> = poise::Context<'a, Data, Error>;
 /// also watch out theres a 0.000000001454% chance of a mutated pi
 #[poise::command(slash_command, prefix_command)]
 async fn pi(ctx: Context<'_>) -> Result<(), Error> {
-    let pi = bbg_core::pi().await;
+    let pi = cbg_core::pi().await;
 
     ctx.reply(format!("pi is: {pi}")).await?;
     Ok(())
@@ -271,14 +271,14 @@ async fn imageop(
 #[poise::command(prefix_command, slash_command)]
 async fn source(ctx: Context<'_>) -> Result<(), Error> {
     // ehh this doesn't need error handling
-    ctx.reply("https://github.com/pastadudes/bbg").await?;
+    ctx.reply("https://github.com/pastadudes/cbg").await?;
     Ok(())
 }
 
 /// Get a random ip address
 #[poise::command(prefix_command, slash_command)]
 async fn ipv4(ctx: Context<'_>) -> Result<(), Error> {
-    let ip = bbg_core::get_random_ipv4().await;
+    let ip = cbg_core::get_random_ipv4().await;
 
     ctx.reply(format!(
         "heres a vaild ip address (may not be online): {}",
@@ -404,7 +404,7 @@ fn rank_label(rank: Option<&UserRank>) -> &'static str {
 }
 
 async fn create_job_embed() -> Result<serenity::CreateEmbed, Error> {
-    use bbg_core::jobs::JobListings;
+    use cbg_core::jobs::JobListings;
     let listings = JobListings::fetch().await?.take(5);
     Ok(listings.to_embed())
 }
