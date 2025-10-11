@@ -410,6 +410,15 @@ async fn jobs(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
+#[poise::command(slash_command, prefix_command)]
+async fn invite(ctx: Context<'_>) -> Result<(), Error> {
+    ctx.reply(format!(
+        "invite me pls: https://discord.com/oauth2/authorize?client_id=734193707741347851"
+    ))
+    .await?;
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() {
     dotenvy::dotenv().ok();
@@ -434,6 +443,7 @@ async fn main() {
                 ipv4(),
                 tetrio(),
                 jobs(),
+                invite(),
             ],
             prefix_options: poise::PrefixFrameworkOptions {
                 prefix: Some("-".into()),
