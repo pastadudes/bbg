@@ -12,4 +12,4 @@ poise = "0.6.1"
 serenity = "0.12"
 tetrio-api = "0.6.0"
 tokio = { version = "1.21.2", features = ["macros", "rt-multi-thread"] }
-cbg-core = { path = "../cbg-core", version = "*" } # we use any version since its synced with bbg-bot anyways
+cbg-core = { path = "../cbg-core", version = "3.*.*"} # we use any version since its synced with bbg-bot anyways
