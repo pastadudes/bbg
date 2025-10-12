@@ -274,7 +274,7 @@ dependencies = [
 
 [[package]]
 name = "cbg-bot"
-version = "3.2.0"
+version = "3.2.1"
 dependencies = [
  "cbg-core",
  "chrono",
@@ -287,10 +287,11 @@ dependencies = [
 
 [[package]]
 name = "cbg-core"
-version = "3.2.0"
+version = "3.2.1"
 dependencies = [
  "chrono",
  "image 0.25.8",
+ "moka",
  "nanohtml2text",
  "plotters",
  "poise",

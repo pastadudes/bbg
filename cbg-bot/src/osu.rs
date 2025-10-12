@@ -13,11 +13,12 @@ pub async fn osu(ctx: Context<'_>) -> Result<(), Error> {
     Ok(())
 }
 
-#[command(prefix_command, slash_command)]
+#[command(prefix_command, slash_command, broadcast_typing)]
 async fn user(
     ctx: Context<'_>,
     #[description = "user identifier (ID or username)"] identifier: String,
 ) -> Result<(), Error> {
+    ctx.defer().await?;
     let user_identifier = identifier
         .parse::<u32>()
         .map_or_else(|_| UserIdentifier::Username(identifier), UserIdentifier::Id);
@@ -62,61 +63,165 @@ async fn user(
     Ok(())
 }
 
-#[command(prefix_command, slash_command)]
+// BAZINGA! almost 150 lines function
+#[command(prefix_command, slash_command, broadcast_typing)]
 async fn score(
     ctx: Context<'_>,
     #[description = "user identifier (ID or username)"] identifier: String,
-    #[description = "score type (best, recent, firsts)"] score_type: Option<String>,
+    #[description = "score type (best, recent, firsts)"] score_type: Option<ScoreType>,
+    #[description = "number of scores (1-5)"] count: Option<usize>,
 ) -> Result<(), Error> {
-    let user_identifier = identifier
-        .parse::<u32>()
-        .map_or_else(|_| UserIdentifier::Username(identifier), UserIdentifier::Id);
+    ctx.defer().await?;
+    let user_identifier = identifier.parse::<u32>().map_or_else(
+        |_| UserIdentifier::Username(identifier.clone()),
+        UserIdentifier::Id,
+    );
 
     let osu = OsuClient::from_env().await?;
-    let score_type = match score_type.unwrap_or("best".to_string()).as_str() {
-        "best" => ScoreType::Best,
-        "recent" => ScoreType::Recent,
-        "firsts" => ScoreType::Firsts,
-        _ => {
-            ctx.say("invalid score type. please use 'best', 'recent', or 'firsts'.")
-                .await?;
-            return Ok(());
-        }
-    };
+    let score_type = score_type.unwrap_or(ScoreType::Best);
 
+    let count = count.unwrap_or(3).min(5);
     let scores = osu
-        .get_user_scores(user_identifier, score_type, Some(5))
+        .get_user_scores(user_identifier, score_type, Some(count))
         .await?;
 
-    let mut score_message = String::new();
-    for score in scores {
-        score_message.push_str(&format!(
-            "beatmap: {}\nscore: {}\npp: {:.2}\nrank: {}\n\n", // test until embeds are made
-            score
-                .beatmap
-                .as_ref()
-                .map_or("???".to_string(), |b| b.title.clone()),
-            score.score,
-            score.pp.unwrap_or(0.0),
-            score.rank
-        ));
+    if scores.is_empty() {
+        ctx.say("no scores found for this user!").await?;
+        return Ok(());
     }
 
-    if score_message.is_empty() {
-        score_message = "no scores found.".to_string();
+    let user = &scores[0].user;
+
+    // send initial embeds without beatmap info
+    let mut initial_embeds = Vec::new();
+
+    for (i, score) in scores.iter().enumerate() {
+        let beatmap_info = if let Some(beatmap_id) = score.beatmap_id {
+            format!("beatmap id: {} (fetching details...)", beatmap_id)
+        } else {
+            "unknown beatmap!".to_string()
+        };
+
+        let embed = serenity::CreateEmbed::default()
+            .title(format!("score #{}", i + 1))
+            .description(beatmap_info)
+            .field("player", &user.username, false)
+            .field("score", format!("{:?}", score.score), false)
+            .field(
+                "pp",
+                score
+                    .pp
+                    .map_or("???".to_string(), |pp| format!("{:.2}", pp)),
+                false,
+            )
+            .field("accuracy", format!("{:.2}%", score.accuracy), false)
+            .field(
+                "combo",
+                format!(
+                    "{}x{}",
+                    score.max_combo,
+                    if score.perfect { " 🔥" } else { "" }
+                ),
+                false,
+            )
+            .field("rank", &score.rank, false)
+            .field("mods", &score.mods, false)
+            .color(match score.rank.as_str() {
+                "X" | "XH" => serenity::Color::from_rgb(255, 215, 0),
+                "S" | "SH" => serenity::Color::LIGHT_GREY,
+                "A" => serenity::Color::KERBAL,
+                "B" => serenity::Color::from_rgb(255, 223, 0),
+                "C" => serenity::Color::ORANGE,
+                "D" => serenity::Color::RED,
+                _ => serenity::Color::DARK_GREY,
+            });
+
+        initial_embeds.push(embed);
     }
 
-    ctx.say(score_message).await?;
+    // send initial message
+    let reply = ctx
+        .send(poise::CreateReply {
+            embeds: initial_embeds,
+            reply: true,
+            ..Default::default()
+        })
+        .await?;
+    let mut message = reply.message().await?;
+
+    // update with beatmap info
+    let mut updated_embeds = Vec::new();
+
+    for (index, score) in scores.iter().enumerate() {
+        let beatmap_info = if let Some(beatmap_id) = score.beatmap_id {
+            match osu.get_beatmap(beatmap_id as u32).await {
+                Ok(beatmap) => {
+                    format!(
+                        "{} - {} [{}]",
+                        beatmap.artist, beatmap.title, beatmap.version
+                    )
+                }
+                Err(_) => {
+                    format!("beatmap id: {} (failed to fetch)", beatmap_id)
+                }
+            }
+        } else {
+            "unknown beatmap!".to_string()
+        };
+
+        let embed = serenity::CreateEmbed::default()
+            .title(format!("score #{}", index + 1))
+            .description(beatmap_info)
+            .field("player", &user.username, false)
+            .field("score", format!("{:?}", score.score), false)
+            .field(
+                "pp",
+                score
+                    .pp
+                    .map_or("???".to_string(), |pp| format!("{:.2}", pp)),
+                false,
+            )
+            .field("accuracy", format!("{:.2}%", score.accuracy), false)
+            .field(
+                "combo",
+                format!(
+                    "{}x{}",
+                    score.max_combo,
+                    if score.perfect { " 🔥" } else { "" }
+                ),
+                false,
+            )
+            .field("rank", &score.rank, false)
+            .field("mods", &score.mods, false)
+            .color(match score.rank.as_str() {
+                "X" | "XH" => serenity::Color::from_rgb(255, 215, 0),
+                "S" | "SH" => serenity::Color::LIGHT_GREY,
+                "A" => serenity::Color::KERBAL,
+                "B" => serenity::Color::from_rgb(255, 223, 0),
+                "C" => serenity::Color::ORANGE,
+                "D" => serenity::Color::RED,
+                _ => serenity::Color::DARK_GREY,
+            });
+
+        updated_embeds.push(embed);
+    }
+
+    // edit the message with updated embeds
+    message
+        .to_mut()
+        .edit(ctx, serenity::EditMessage::default().embeds(updated_embeds))
+        .await?;
 
     Ok(())
 }
 
 /// osu: fetches beatmap info by id
-#[command(prefix_command, slash_command)]
+#[command(prefix_command, slash_command, broadcast_typing)]
 async fn beatmap(
     ctx: Context<'_>,
     #[description = "beatmap ID"] beatmap_id: u32,
 ) -> Result<(), Error> {
+    ctx.defer().await?;
     let osu = OsuClient::from_env().await?;
     let beatmap = osu.get_beatmap(beatmap_id).await?;
 

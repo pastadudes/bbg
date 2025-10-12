@@ -404,7 +404,7 @@ async fn create_job_embed() -> Result<serenity::CreateEmbed, Error> {
 }
 
 /// shows 5 job listings from arbeitnow.com
-#[poise::command(slash_command, prefix_command, aliases("j*bs"))]
+#[poise::command(slash_command, prefix_command, aliases("j*bs"), owners_only)]
 async fn jobs(ctx: Context<'_>) -> Result<(), Error> {
     let embed = create_job_embed().await?;
     let builder = poise::CreateReply::default().embed(embed).reply(true);

@@ -1,7 +1,9 @@
 // tried vibe coding this geniunely the ai was so dumb how can someone vibe code and push fullstack apps????
 // tho the structure was pretty good aand ehh lgtm
+use moka::future::Cache;
 use rosu_v2::prelude::*;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 pub type OsuResult<T> = Result<T, crate::Error>;
 
@@ -48,6 +50,7 @@ pub struct OsuScore {
     pub rank: String,
     pub accuracy: f32,
     pub user: OsuUser,
+    pub beatmap_id: Option<u32>,
     pub beatmap: Option<OsuBeatmap>,
 }
 
@@ -57,12 +60,24 @@ pub struct BeatmapScores {
     pub scores: Vec<OsuScore>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, Hash, PartialEq)]
 pub enum UserIdentifier {
     Id(u32),
     Username(String),
 }
 
+#[cfg(feature = "discord")]
+#[derive(Debug, Clone, poise::ChoiceParameter)]
+pub enum ScoreType {
+    #[name = "best scores"]
+    Best,
+    #[name = "recent scores"]
+    Recent,
+    #[name = "firsts"]
+    Firsts,
+}
+
+#[cfg(not(feature = "discord"))]
 #[derive(Debug, Clone)]
 pub enum ScoreType {
     Best,
@@ -72,6 +87,8 @@ pub enum ScoreType {
 
 pub struct OsuClient {
     client: Osu,
+    beatmap_cache: Arc<Cache<u32, OsuBeatmap>>,
+    user_cache: Arc<Cache<UserIdentifier, OsuUser>>,
 }
 
 impl OsuClient {
@@ -79,8 +96,24 @@ impl OsuClient {
         let client = Osu::new(client_id, client_secret)
             .await
             .map_err(|e| format!("osu API authentication failed: {}", e))?;
+        let beatmap_cache = Arc::new(
+            Cache::builder()
+                .max_capacity(1000)
+                .time_to_live(tokio::time::Duration::from_secs(3600))
+                .build(),
+        );
+        let user_cache = Arc::new(
+            Cache::builder()
+                .max_capacity(10000) // "slighty" higher cache capacity
+                .time_to_live(tokio::time::Duration::from_secs(3600))
+                .build(),
+        );
 
-        Ok(Self { client })
+        Ok(Self {
+            client,
+            beatmap_cache,
+            user_cache,
+        })
     }
 
     pub async fn from_env() -> OsuResult<Self> {
@@ -107,7 +140,7 @@ impl OsuClient {
             _ => format!("osu API error: {}", e),
         })?;
 
-        Ok(OsuUser {
+        let osu_user = OsuUser {
             id: user.user_id as u32,
             username: user.username.to_string(),
             country_code: user.country_code.to_string(),
@@ -122,10 +155,18 @@ impl OsuClient {
                 .map(|s| s.level.current as f32)
                 .unwrap_or(0.0),
             avatar_url: user.avatar_url,
-        })
+        };
+
+        self.user_cache.insert(identifier, osu_user.clone()).await;
+        Ok(osu_user)
     }
 
     pub async fn get_beatmap(&self, beatmap_id: u32) -> OsuResult<OsuBeatmap> {
+        // get this shit from cache first
+        if let Some(cached) = self.beatmap_cache.get(&beatmap_id).await {
+            return Ok(cached);
+        }
+
         let beatmap = self
             .client
             .beatmap()
@@ -165,7 +206,7 @@ impl OsuClient {
             image = Some(bytes.to_vec());
         }
 
-        Ok(OsuBeatmap {
+        let osu_beatmap = OsuBeatmap {
             id: beatmap.map_id as u32,
             artist,
             title,
@@ -179,7 +220,13 @@ impl OsuClient {
             od: beatmap.od,
             max_combo: beatmap.max_combo.unwrap_or(0) as u32,
             background_image: image,
-        })
+        };
+        // FIX ASAP: beatmap cache isn't working? also suspiciously low ram usage indicates that
+        self.beatmap_cache
+            .insert(beatmap_id, osu_beatmap.clone())
+            .await;
+
+        Ok(osu_beatmap)
     }
 
     pub async fn get_beatmap_scores(&self, beatmap_id: u32) -> OsuResult<BeatmapScores> {
@@ -219,6 +266,7 @@ impl OsuClient {
                             .unwrap_or(0.0),
                         avatar_url: user.avatar_url,
                     },
+                    beatmap_id: Some(beatmap.id),
                     beatmap: None,
                 });
             }
@@ -285,6 +333,7 @@ impl OsuClient {
                             .unwrap_or(0.0),
                         avatar_url: user.avatar_url,
                     },
+                    beatmap_id: Some(score.map_id), // not sure?
                     beatmap: None,
                 });
             }
@@ -293,7 +342,7 @@ impl OsuClient {
         Ok(converted_scores)
     }
 
-    // Utility methods for common operations
+    // utility methods for common operations
     pub async fn search_user(&self, username: &str) -> OsuResult<OsuUser> {
         self.get_user(UserIdentifier::Username(username.to_string()))
             .await
@@ -331,7 +380,7 @@ impl OsuClient {
     }
 }
 
-// Convenience trait implementations
+// convenience trait implementations
 impl From<u32> for UserIdentifier {
     fn from(id: u32) -> Self {
         UserIdentifier::Id(id)
