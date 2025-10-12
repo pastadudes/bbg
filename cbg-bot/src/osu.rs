@@ -23,7 +23,7 @@ async fn user(
         .parse::<u32>()
         .map_or_else(|_| UserIdentifier::Username(identifier), UserIdentifier::Id);
 
-    let osu = OsuClient::from_env().await?;
+    let osu = &ctx.data().osu_client;
     let user = osu.get_user(user_identifier).await?;
 
     // calculating the amount of digits (we can't use len since "???" would be 3 digits and if the digit is only 1 it would be like 1 digits which is weird)
@@ -77,7 +77,7 @@ async fn score(
         UserIdentifier::Id,
     );
 
-    let osu = OsuClient::from_env().await?;
+    let osu = &ctx.data().osu_client;
     let score_type = score_type.unwrap_or(ScoreType::Best);
 
     let count = count.unwrap_or(3).min(5);
@@ -222,32 +222,48 @@ async fn beatmap(
     #[description = "beatmap ID"] beatmap_id: u32,
 ) -> Result<(), Error> {
     ctx.defer().await?;
-    let osu = OsuClient::from_env().await?;
+    let osu = &ctx.data().osu_client;
     let beatmap = osu.get_beatmap(beatmap_id).await?;
 
-    let embed = serenity::CreateEmbed::default()
+    let mut embed = serenity::CreateEmbed::default()
         .title(&beatmap.title)
-        .field("id:", beatmap.id.to_string(), false)
-        .field("artist:", beatmap.artist, false)
-        .field("mapper:", beatmap.creator, false)
-        .field("version:", beatmap.version, false)
-        .field("stars", format!("{} ⭐", beatmap.stars), false)
-        .field("bpm:", beatmap.bpm.to_string(), false)
-        .field("ar:", beatmap.ar.to_string(), false)
-        .field("cs:", beatmap.cs.to_string(), false)
-        .field("hp drain:", beatmap.hp.to_string(), false)
-        .field("od:", beatmap.od.to_string(), false);
+        .field("id:", beatmap.id.to_string(), true)
+        .field("artist:", beatmap.artist, true)
+        .field("mapper:", beatmap.creator, true)
+        .field("play count:", beatmap.play_count.to_string(), true)
+        .field("version:", beatmap.version, true)
+        .field("has leaderboard?", beatmap.is_scoreable.to_string(), true)
+        .field("mode:", beatmap.game_mode, true)
+        .field("stars", format!("{} ⭐", beatmap.stars), true)
+        .field("bpm:", beatmap.bpm.to_string(), true)
+        .field("ar:", beatmap.ar.to_string(), true)
+        .field("cs:", beatmap.cs.to_string(), true)
+        .field("hp drain:", beatmap.hp.to_string(), true)
+        .field("od:", beatmap.od.to_string(), true)
+        .field("hit objects:", beatmap.hit_objects.to_string(), true)
+        .field("max combo achievable:", beatmap.max_combo.to_string(), true);
 
-    let mut reply = poise::CreateReply::default().embed(embed).reply(true);
-    // Add the image only if it's available
-    if let Some(background_image) = beatmap.background_image {
-        let attachment =
-            serenity::CreateAttachment::bytes(background_image, format!("{}.jpeg", &beatmap.title));
-        // TODO: include hte image in the embed
+    let mut reply = poise::CreateReply::default().reply(true);
+
+    if let Some(ref background_image) = beatmap.background_image {
+        // Attach background image
+        let attachment = serenity::CreateAttachment::bytes(
+            background_image.clone(),
+            // format!("{}.jpeg", &beatmap.title),
+            "map_background_image.jpeg",
+        );
         reply = reply.attachment(attachment);
-        // // TODO: add average color when AverageColor implements bytes
-        // embed = embed.color()
+
+        embed = embed
+            .color(
+                AverageColor::from_bytes(background_image.to_owned())
+                    .await?
+                    .to_embed_color(),
+            )
+            // .image(format!("attachment://{}.jpeg", &beatmap.title));
+            .attachment("map_background_image.jpeg");
     }
+    reply = reply.embed(embed);
     ctx.send(reply).await?;
     Ok(())
 }
@@ -263,7 +279,7 @@ async fn rank(
         .parse::<u32>()
         .map_or_else(|_| UserIdentifier::Username(identifier), UserIdentifier::Id);
 
-    let osu = OsuClient::from_env().await?;
+    let osu = &ctx.data().osu_client;
     let user = osu.get_user(user_identifier).await?;
 
     if let Some(country_code) = country {

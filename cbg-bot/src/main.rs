@@ -14,6 +14,9 @@
 // You should have received a copy of the GNU Affero General Public License
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+use std::sync::Arc;
+
+use cbg_core::osu::OsuClient;
 use cbg_core::tetrio::{TetrioActivity, TetrioUser};
 use cbg_core::{AverageColor, imageops::*};
 use chrono::{DateTime, Utc};
@@ -28,6 +31,7 @@ mod osu;
 pub struct Data {
     // who knows i might add more user data here
     start_time: Instant,
+    osu_client: Arc<OsuClient>,
 }
 
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
@@ -493,6 +497,7 @@ async fn main() {
                 // })
                 Ok(Data {
                     start_time: Instant::now(),
+                    osu_client: OsuClient::from_env().await?.into(),
                 })
             })
         })

@@ -27,6 +27,7 @@ pub struct OsuBeatmap {
     pub artist: String,
     pub title: String,
     pub creator: String,
+    pub game_mode: String,
     pub version: String,
     pub stars: f32,
     pub bpm: f32,
@@ -35,6 +36,9 @@ pub struct OsuBeatmap {
     pub hp: f32,
     pub od: f32,
     pub max_combo: u32,
+    pub play_count: u32,
+    pub is_scoreable: bool,
+    pub hit_objects: u32,
     #[serde(skip)]
     pub background_image: Option<Vec<u8>>,
 }
@@ -211,7 +215,8 @@ impl OsuClient {
             artist,
             title,
             creator,
-            version: beatmap.version,
+            version: beatmap.version.clone(),
+            game_mode: beatmap.mode.to_string(),
             stars: beatmap.stars,
             bpm: beatmap.bpm,
             ar: beatmap.ar,
@@ -219,6 +224,9 @@ impl OsuClient {
             hp: beatmap.hp,
             od: beatmap.od,
             max_combo: beatmap.max_combo.unwrap_or(0) as u32,
+            play_count: beatmap.playcount,
+            is_scoreable: beatmap.is_scoreable,
+            hit_objects: beatmap.count_objects(),
             background_image: image,
         };
         // FIX ASAP: beatmap cache isn't working? also suspiciously low ram usage indicates that
